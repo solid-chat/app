@@ -281,29 +281,29 @@
   </div>
 </div>
 
-<!-- Load rdflib directly for standalone use -->
+<!-- Load rdflib and Solid auth -->
 <script src="https://cdn.jsdelivr.net/npm/rdflib@2.2.33/dist/rdflib.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@inrupt/solid-client-authn-browser@2.2.6/dist/solid-client-authn.bundle.js"></script>
 
 <script type="module">
 import { longChatPane } from './src/longChatPane.js'
 
-// Wait for rdflib to be available
-function waitForRdflib() {
+// Wait for libraries to be available
+async function waitForLibraries() {
   return new Promise((resolve) => {
-    if (typeof $rdf !== 'undefined') {
-      resolve()
-    } else {
-      const check = setInterval(() => {
-        if (typeof $rdf !== 'undefined') {
-          clearInterval(check)
-          resolve()
-        }
-      }, 50)
-    }
+    const check = setInterval(() => {
+      if (typeof $rdf !== 'undefined' && typeof solidClientAuthentication !== 'undefined') {
+        clearInterval(check)
+        resolve()
+      }
+    }, 50)
   })
 }
 
-await waitForRdflib()
+await waitForLibraries()
+
+// Get Solid auth functions
+const { login, logout, handleIncomingRedirect, getDefaultSession } = solidClientAuthentication
 
 // DOM elements
 const chatUriInput = document.getElementById('chatUri')
@@ -313,13 +313,106 @@ const placeholder = document.getElementById('placeholder')
 const userStatus = document.getElementById('userStatus')
 const loginArea = document.getElementById('loginArea')
 
-// Get globals from rdflib
+// Auth state
+let currentSession = null
+let currentWebId = null
+
+// Handle redirect callback from IdP
+async function handleAuthRedirect() {
+  userStatus.textContent = 'Checking login...'
+
+  try {
+    await handleIncomingRedirect({ restorePreviousSession: true })
+    currentSession = getDefaultSession()
+
+    if (currentSession.info.isLoggedIn) {
+      currentWebId = currentSession.info.webId
+      updateAuthUI(true)
+    } else {
+      updateAuthUI(false)
+    }
+  } catch (err) {
+    console.error('Auth redirect error:', err)
+    updateAuthUI(false)
+  }
+}
+
+// Update UI based on auth state
+function updateAuthUI(isLoggedIn) {
+  if (isLoggedIn && currentWebId) {
+    const shortId = currentWebId.split('//')[1]?.split('/')[0] || currentWebId
+    userStatus.innerHTML = `Logged in as <strong><a href="${currentWebId}" target="_blank" style="color: var(--accent); text-decoration: none;">${shortId}</a></strong>`
+    loginArea.innerHTML = `<button id="logoutBtn">Logout</button>`
+    document.getElementById('logoutBtn').addEventListener('click', handleLogout)
+  } else {
+    userStatus.textContent = 'Not logged in'
+    loginArea.innerHTML = `
+      <input type="text" id="idpInput" placeholder="solidcommunity.net" style="padding: 8px 12px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 13px; width: 160px;">
+      <button id="loginBtn">Login</button>
+    `
+    document.getElementById('loginBtn').addEventListener('click', handleLogin)
+    document.getElementById('idpInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') handleLogin()
+    })
+  }
+}
+
+// Handle login
+async function handleLogin() {
+  const idpInput = document.getElementById('idpInput')
+  let idp = idpInput.value.trim() || 'solidcommunity.net'
+
+  // Add https if missing
+  if (!idp.startsWith('http')) {
+    idp = 'https://' + idp
+  }
+
+  userStatus.textContent = 'Redirecting to login...'
+
+  try {
+    await login({
+      oidcIssuer: idp,
+      redirectUrl: window.location.href,
+      clientName: 'Solid Chat'
+    })
+  } catch (err) {
+    console.error('Login error:', err)
+    userStatus.textContent = 'Login failed: ' + err.message
+  }
+}
+
+// Handle logout
+async function handleLogout() {
+  try {
+    await logout()
+    currentSession = null
+    currentWebId = null
+    updateAuthUI(false)
+  } catch (err) {
+    console.error('Logout error:', err)
+  }
+}
+
+// Get authenticated fetch function
+function getAuthFetch() {
+  if (currentSession?.info?.isLoggedIn) {
+    return currentSession.fetch
+  }
+  return fetch.bind(window)
+}
+
+// Get globals from rdflib with authenticated fetch
 const store = $rdf.graph()
-const fetcher = new $rdf.Fetcher(store, { fetch: fetch.bind(window) })
+const fetcher = new $rdf.Fetcher(store, { fetch: getAuthFetch() })
 store.fetcher = fetcher
 store.rdflib = $rdf
 
-// Simple updater
+// Update fetcher when auth changes
+function updateFetcher() {
+  store.fetcher = new $rdf.Fetcher(store, { fetch: getAuthFetch() })
+}
+
+// Simple updater with authenticated fetch
 store.updater = {
   update: async function(del, ins) {
     const doc = ins[0]?.why || del[0]?.why
@@ -331,13 +424,13 @@ store.updater = {
       body += `${st.subject.toNT()} ${st.predicate.toNT()} ${st.object.toNT()} .\n`
     }
 
-    const response = await fetch(doc.value, {
+    const authFetch = getAuthFetch()
+    const response = await authFetch(doc.value, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/sparql-update'
       },
-      body: `INSERT DATA { ${body} }`,
-      credentials: 'include'
+      body: `INSERT DATA { ${body} }`
     })
 
     if (!response.ok) {
@@ -353,9 +446,18 @@ store.updater = {
 
 // Create context for pane
 function createContext(uri) {
-  // For local test chat, simulate being logged in as Melvin
+  // Use real logged in user, or mock for local test
   const isLocalChat = uri.includes('test/chat.ttl') || uri.startsWith('./')
-  const mockUser = isLocalChat ? $rdf.sym('https://melvin.solid.social/profile/card#me') : null
+  let user = null
+
+  if (currentWebId) {
+    user = $rdf.sym(currentWebId)
+  } else if (isLocalChat) {
+    user = $rdf.sym('https://melvin.solid.social/profile/card#me')
+  }
+
+  // Update fetcher with current auth
+  updateFetcher()
 
   return {
     dom: document,
@@ -363,7 +465,7 @@ function createContext(uri) {
       store: store,
       logic: {
         authn: {
-          currentUser: () => mockUser
+          currentUser: () => user
         }
       }
     }
@@ -434,15 +536,19 @@ document.querySelectorAll('.quick-link').forEach(link => {
   })
 })
 
-// Check for URI in query string, or load default
-const params = new URLSearchParams(window.location.search)
-const initialUri = params.get('uri') || 'https://solidos.solidcommunity.net/Team/SolidOs%20team%20chat/2022/02/09/chat.ttl'
-chatUriInput.value = initialUri
-loadChat(initialUri)
+// Initialize: handle auth redirect first, then load chat
+async function init() {
+  // Handle auth redirect callback (if returning from IdP)
+  await handleAuthRedirect()
 
-// Update status
-userStatus.textContent = 'Ready (not logged in)'
-loginArea.innerHTML = '<span style="font-size:13px;color:#666;">Standalone mode</span>'
+  // Check for URI in query string, or load default
+  const params = new URLSearchParams(window.location.search)
+  const initialUri = params.get('uri') || 'https://solidos.solidcommunity.net/Team/SolidOs%20team%20chat/2022/02/09/chat.ttl'
+  chatUriInput.value = initialUri
+  loadChat(initialUri)
+}
+
+init()
 </script>
 
 </body>
