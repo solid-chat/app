@@ -429,6 +429,14 @@ const styles = `
 .media-wrapper audio {
   width: 250px;
 }
+
+.message-text code {
+  background: rgba(128, 90, 213, 0.1);
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+  font-size: 13px;
+}
 `
 
 // Inject styles once
@@ -461,6 +469,23 @@ function escapeHtml(text) {
   const div = document.createElement('div')
   div.textContent = text
   return div.innerHTML
+}
+
+// Parse simple markdown: *bold*, _italic_, ~strike~, `code`
+function parseMarkdown(text) {
+  // Escape HTML first to prevent XSS
+  let html = escapeHtml(text)
+
+  // Code (must be first to avoid conflicts)
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>')
+  // Bold
+  html = html.replace(/\*([^*]+)\*/g, '<strong>$1</strong>')
+  // Italic
+  html = html.replace(/_([^_]+)_/g, '<em>$1</em>')
+  // Strikethrough
+  html = html.replace(/~([^~]+)~/g, '<s>$1</s>')
+
+  return html
 }
 
 // Render message content with links and media
@@ -516,9 +541,9 @@ function renderMessageContent(dom, content) {
         container.appendChild(link)
       }
     } else if (part) {
-      // Regular text
+      // Regular text with markdown
       const span = dom.createElement('span')
-      span.textContent = part
+      span.innerHTML = parseMarkdown(part)
       container.appendChild(span)
     }
   }
