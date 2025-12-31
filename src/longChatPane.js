@@ -366,6 +366,43 @@ const styles = `
   padding: 20px;
   color: var(--text-muted);
 }
+
+.message-text a {
+  color: var(--accent);
+  text-decoration: underline;
+  word-break: break-all;
+}
+
+.message-text a:hover {
+  opacity: 0.8;
+}
+
+.media-wrapper {
+  margin: 8px 0;
+  max-width: 100%;
+}
+
+.media-wrapper img {
+  max-width: 300px;
+  max-height: 300px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.media-wrapper img:hover {
+  transform: scale(1.02);
+}
+
+.media-wrapper video,
+.media-wrapper audio {
+  max-width: 300px;
+  border-radius: 8px;
+}
+
+.media-wrapper audio {
+  width: 250px;
+}
 `
 
 // Inject styles once
@@ -383,6 +420,84 @@ function formatTime(date) {
   if (!date) return ''
   const d = new Date(date)
   return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
+}
+
+// URL regex
+const URL_REGEX = /(https?:\/\/[^\s<>"{}|\\^`[\]]+)/gi
+
+// Media extensions
+const IMAGE_EXT = /\.(jpg|jpeg|png|gif|webp|svg)(\?.*)?$/i
+const VIDEO_EXT = /\.(mp4|webm|ogg|mov)(\?.*)?$/i
+const AUDIO_EXT = /\.(mp3|wav|ogg|m4a|aac)(\?.*)?$/i
+
+// Escape HTML to prevent XSS
+function escapeHtml(text) {
+  const div = document.createElement('div')
+  div.textContent = text
+  return div.innerHTML
+}
+
+// Render message content with links and media
+function renderMessageContent(dom, content) {
+  const container = dom.createElement('div')
+
+  // Split by URLs
+  const parts = content.split(URL_REGEX)
+
+  for (const part of parts) {
+    if (URL_REGEX.test(part)) {
+      URL_REGEX.lastIndex = 0 // Reset regex state
+
+      // Check if it's media
+      if (IMAGE_EXT.test(part)) {
+        // Image
+        const wrapper = dom.createElement('div')
+        wrapper.className = 'media-wrapper'
+        const img = dom.createElement('img')
+        img.src = part
+        img.alt = 'Image'
+        img.loading = 'lazy'
+        img.onclick = () => window.open(part, '_blank')
+        wrapper.appendChild(img)
+        container.appendChild(wrapper)
+      } else if (VIDEO_EXT.test(part)) {
+        // Video
+        const wrapper = dom.createElement('div')
+        wrapper.className = 'media-wrapper'
+        const video = dom.createElement('video')
+        video.src = part
+        video.controls = true
+        video.preload = 'metadata'
+        wrapper.appendChild(video)
+        container.appendChild(wrapper)
+      } else if (AUDIO_EXT.test(part)) {
+        // Audio
+        const wrapper = dom.createElement('div')
+        wrapper.className = 'media-wrapper'
+        const audio = dom.createElement('audio')
+        audio.src = part
+        audio.controls = true
+        audio.preload = 'metadata'
+        wrapper.appendChild(audio)
+        container.appendChild(wrapper)
+      } else {
+        // Regular link
+        const link = dom.createElement('a')
+        link.href = part
+        link.textContent = part.length > 50 ? part.slice(0, 50) + '...' : part
+        link.target = '_blank'
+        link.rel = 'noopener noreferrer'
+        container.appendChild(link)
+      }
+    } else if (part) {
+      // Regular text
+      const span = dom.createElement('span')
+      span.textContent = part
+      container.appendChild(span)
+    }
+  }
+
+  return container
 }
 
 // Get initials from name
@@ -449,7 +564,8 @@ function createMessageElement(dom, message, isOwn) {
 
   const text = dom.createElement('div')
   text.className = 'message-text'
-  text.textContent = message.content || ''
+  const contentEl = renderMessageContent(dom, message.content || '')
+  text.appendChild(contentEl)
   bubble.appendChild(text)
 
   const meta = dom.createElement('div')
