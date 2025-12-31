@@ -349,7 +349,7 @@ function updateAuthUI(isLoggedIn) {
 // Handle login
 async function handleLogin() {
   const idpInput = document.getElementById('idpInput')
-  let idp = idpInput.value.trim() || 'solidcommunity.net'
+  let idp = idpInput.value.trim() || 'solidweb.org'
 
   // Add https if missing
   if (!idp.startsWith('http')) {
