@@ -777,6 +777,9 @@ export const longChatPane = {
       uploadBtn.textContent = '⏳'
 
       try {
+        // Get authenticated fetch from context
+        const authFetch = context.authFetch ? context.authFetch() : fetch
+
         // Extract pod root from WebID (e.g., https://user.solidweb.org/profile/card#me -> https://user.solidweb.org/)
         const webIdUrl = new URL(uploadUser)
         const podRoot = `${webIdUrl.protocol}//${webIdUrl.host}/`
@@ -786,32 +789,29 @@ export const longChatPane = {
         const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_')
         const uploadPath = `${podRoot}public/chat-uploads/${timestamp}-${safeName}`
 
-        // Upload file using fetch with credentials
-        const response = await fetch(uploadPath, {
+        // Upload file using authenticated fetch
+        const response = await authFetch(uploadPath, {
           method: 'PUT',
           headers: {
             'Content-Type': file.type || 'application/octet-stream'
           },
-          body: file,
-          credentials: 'include'
+          body: file
         })
 
         if (!response.ok) {
           // Try to create container first
           if (response.status === 404 || response.status === 409) {
             const containerPath = `${podRoot}public/chat-uploads/`
-            await fetch(containerPath, {
+            await authFetch(containerPath, {
               method: 'PUT',
               headers: { 'Content-Type': 'text/turtle' },
-              body: '',
-              credentials: 'include'
+              body: ''
             })
             // Retry upload
-            const retry = await fetch(uploadPath, {
+            const retry = await authFetch(uploadPath, {
               method: 'PUT',
               headers: { 'Content-Type': file.type || 'application/octet-stream' },
-              body: file,
-              credentials: 'include'
+              body: file
             })
             if (!retry.ok) {
               throw new Error(`Upload failed: ${retry.status} ${retry.statusText}`)
