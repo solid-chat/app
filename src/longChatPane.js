@@ -444,10 +444,11 @@ const styles = `
 }
 
 .message-text pre {
-  background: #1e1e2e;
-  color: #cdd6f4;
+  background: #f4f4f5;
+  color: #1e1e2e;
   padding: 12px;
   border-radius: 8px;
+  border: 1px solid #e4e4e7;
   overflow-x: auto;
   overflow-y: hidden;
   margin: 8px 0;
