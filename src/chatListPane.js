@@ -739,4 +739,4 @@ export const chatListPane = {
 }
 
 // Export for use in index.html
-export { addChat, updateChatPreview }
+export { addChat, removeChat, updateChatPreview }

@@ -15,7 +15,9 @@
   ],
   "scripts": {
     "start": "npx serve .",
-    "dev": "npx serve . -p 8080"
+    "dev": "npx serve . -p 8080",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "peerDependencies": {
     "rdflib": ">=2.2.0"
@@ -38,5 +40,9 @@
   },
   "homepage": "https://solid-chat.com",
   "author": "Solid Chat Contributors",
-  "license": "AGPL-3.0"
+  "license": "AGPL-3.0",
+  "devDependencies": {
+    "jsdom": "^27.4.0",
+    "vitest": "^4.0.16"
+  }
 }
