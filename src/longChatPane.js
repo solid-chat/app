@@ -449,10 +449,14 @@ const styles = `
   padding: 12px;
   border-radius: 8px;
   overflow-x: auto;
+  overflow-y: hidden;
   margin: 8px 0;
   font-family: 'SF Mono', Monaco, 'Courier New', monospace;
   font-size: 13px;
   line-height: 1.4;
+  max-width: 100%;
+  white-space: pre-wrap;
+  word-wrap: break-word;
 }
 
 .message-text pre code {
@@ -634,7 +638,9 @@ function parseMarkdown(text) {
   let html = escapeHtml(text)
 
   // Code fences (must be first, before inline code)
-  html = html.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+  html = html.replace(/```\n?([\s\S]*?)\n?```/g, (_, code) => {
+    return '<pre><code>' + code.trim() + '</code></pre>'
+  })
   // Inline code
   html = html.replace(/`([^`]+)`/g, '<code>$1</code>')
   // Bold
