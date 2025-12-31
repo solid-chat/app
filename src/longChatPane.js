@@ -189,6 +189,11 @@ const styles = `
 .message-time {
   font-size: 11px;
   color: var(--text-muted);
+  text-decoration: none;
+}
+
+.message-time:hover {
+  text-decoration: underline;
 }
 
 .message-author {
@@ -691,9 +696,13 @@ function createMessageElement(dom, message, isOwn, callbacks) {
   const meta = dom.createElement('div')
   meta.className = 'message-meta'
 
-  const time = dom.createElement('span')
+  const time = dom.createElement('a')
   time.className = 'message-time'
   time.textContent = formatTime(message.date)
+  time.href = message.uri
+  time.target = '_blank'
+  time.rel = 'noopener'
+  time.title = message.uri
   meta.appendChild(time)
 
   // Edited indicator
