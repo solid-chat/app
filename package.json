@@ -1,6 +1,6 @@
 {
   "name": "solid-chat",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Modern chat panes for Solid pods - longChatPane and chatListPane",
   "type": "module",
   "main": "src/index.js",
