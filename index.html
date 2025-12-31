@@ -235,6 +235,7 @@
     <p>Decentralized messaging for the web</p>
   </div>
   <div id="headerLoginArea" style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
+    <button id="soundToggle" onclick="toggleSound()" title="Toggle notification sound" style="background: none; border: none; font-size: 18px; cursor: pointer; padding: 4px;">🔔</button>
     <span id="userStatus" style="font-size: 13px; opacity: 0.9;">Loading...</span>
     <span id="loginArea"></span>
   </div>
@@ -465,6 +466,48 @@ let currentWebSocket = null
 let currentChatUri = null
 let reconnectTimeout = null
 
+// Notification sound
+let soundEnabled = localStorage.getItem('solidchat-sound') !== 'false'
+
+function playNotificationSound() {
+  if (!soundEnabled || !document.hidden) return
+
+  const ctx = new AudioContext()
+
+  // First tone (D5)
+  const osc1 = ctx.createOscillator()
+  const gain1 = ctx.createGain()
+  osc1.connect(gain1)
+  gain1.connect(ctx.destination)
+  osc1.frequency.value = 587.33
+  gain1.gain.setValueAtTime(0.2, ctx.currentTime)
+  gain1.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2)
+  osc1.start()
+  osc1.stop(ctx.currentTime + 0.2)
+
+  // Second tone (A5)
+  const osc2 = ctx.createOscillator()
+  const gain2 = ctx.createGain()
+  osc2.connect(gain2)
+  gain2.connect(ctx.destination)
+  osc2.frequency.value = 880
+  gain2.gain.setValueAtTime(0.2, ctx.currentTime + 0.15)
+  gain2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4)
+  osc2.start(ctx.currentTime + 0.15)
+  osc2.stop(ctx.currentTime + 0.4)
+}
+
+function toggleSound() {
+  soundEnabled = !soundEnabled
+  localStorage.setItem('solidchat-sound', soundEnabled)
+  updateSoundButton()
+}
+
+function updateSoundButton() {
+  const btn = document.getElementById('soundToggle')
+  if (btn) btn.textContent = soundEnabled ? '🔔' : '🔕'
+}
+
 // Subscribe to real-time updates for a resource
 async function subscribeToUpdates(uri) {
   // Close existing connection
@@ -536,6 +579,7 @@ async function subscribeWebSocketChannel2023(uri, authFetch) {
     currentWebSocket.onmessage = (event) => {
       console.log('WebSocketChannel2023 notification:', event.data)
       // Any message means the resource changed
+      playNotificationSound()
       setTimeout(() => refreshChat(), 500)
     }
 
@@ -572,6 +616,7 @@ function connectLegacyWebSocket(updatesVia, uri) {
       const updatedUri = data.slice(4).trim()
       if (updatedUri === uri || uri.startsWith(updatedUri)) {
         console.log('Chat updated, refreshing...')
+        playNotificationSound()
         setTimeout(() => refreshChat(), 500)
       }
     }
@@ -677,6 +722,9 @@ const DEFAULT_CHAT_URI = 'https://solid-chat.solidcommunity.net/public/global/ch
 
 // Initialize: handle auth redirect first, then render sidebar
 async function init() {
+  // Set initial sound button state
+  updateSoundButton()
+
   // Handle auth redirect callback (if returning from IdP)
   await handleAuthRedirect()
 
