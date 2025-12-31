@@ -443,6 +443,24 @@ const styles = `
   font-size: 13px;
 }
 
+.message-text pre {
+  background: #1e1e2e;
+  color: #cdd6f4;
+  padding: 12px;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 8px 0;
+  font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.message-text pre code {
+  background: none;
+  padding: 0;
+  color: inherit;
+}
+
 .message-actions {
   display: none;
   gap: 4px;
@@ -610,12 +628,14 @@ function escapeHtml(text) {
   return div.innerHTML
 }
 
-// Parse simple markdown: *bold*, _italic_, ~strike~, `code`
+// Parse simple markdown: *bold*, _italic_, ~strike~, `code`, ```code blocks```
 function parseMarkdown(text) {
   // Escape HTML first to prevent XSS
   let html = escapeHtml(text)
 
-  // Code (must be first to avoid conflicts)
+  // Code fences (must be first, before inline code)
+  html = html.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+  // Inline code
   html = html.replace(/`([^`]+)`/g, '<code>$1</code>')
   // Bold
   html = html.replace(/\*([^*]+)\*/g, '<strong>$1</strong>')

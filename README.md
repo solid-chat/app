@@ -27,7 +27,7 @@ Modern, decentralized chat app built on the [Solid](https://solidproject.org) pr
 - Send and receive messages
 - Edit your own messages (requires Write permission)
 - Delete your own messages (requires Write permission)
-- Simple markdown: `*bold*`, `_italic_`, `~strike~`, `` `code` ``
+- Simple markdown: `*bold*`, `_italic_`, `~strike~`, `` `code` ``, ` ```code blocks``` `
 - Emoji picker
 - Emoji reactions: 👍 ❤️ 😂 😮 😢 🎉
 
