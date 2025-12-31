@@ -437,6 +437,74 @@ const styles = `
   font-family: 'SF Mono', Monaco, 'Courier New', monospace;
   font-size: 13px;
 }
+
+.message-actions {
+  display: none;
+  gap: 4px;
+  margin-left: 8px;
+}
+
+.message-row:hover .message-actions {
+  display: flex;
+}
+
+.message-actions button {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  opacity: 0.6;
+  transition: opacity 0.2s, background 0.2s;
+}
+
+.message-actions button:hover {
+  opacity: 1;
+  background: rgba(0,0,0,0.05);
+}
+
+.message-edited {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+  margin-left: 6px;
+}
+
+.edit-textarea {
+  width: 100%;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 8px;
+  font-family: inherit;
+  font-size: 14px;
+  resize: none;
+  min-height: 40px;
+}
+
+.edit-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.edit-actions button {
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  border: none;
+}
+
+.edit-actions .save-btn {
+  background: var(--accent);
+  color: white;
+}
+
+.edit-actions .cancel-btn {
+  background: #e2e8f0;
+  color: var(--text);
+}
 `
 
 // Inject styles once
@@ -586,9 +654,10 @@ async function fetchAvatar(webId, store, $rdf) {
 }
 
 // Create message element
-function createMessageElement(dom, message, isOwn) {
+function createMessageElement(dom, message, isOwn, callbacks) {
   const row = dom.createElement('div')
   row.className = `message-row ${isOwn ? 'sent' : 'received'}`
+  row.dataset.uri = message.uri
 
   // Avatar
   const avatar = dom.createElement('div')
@@ -626,6 +695,40 @@ function createMessageElement(dom, message, isOwn) {
   time.className = 'message-time'
   time.textContent = formatTime(message.date)
   meta.appendChild(time)
+
+  // Edited indicator
+  if (message.edited) {
+    const edited = dom.createElement('span')
+    edited.className = 'message-edited'
+    edited.textContent = '(edited)'
+    meta.appendChild(edited)
+  }
+
+  // Action buttons for own messages
+  if (isOwn && callbacks) {
+    const actions = dom.createElement('div')
+    actions.className = 'message-actions'
+
+    const editBtn = dom.createElement('button')
+    editBtn.textContent = '✏️'
+    editBtn.title = 'Edit'
+    editBtn.onclick = (e) => {
+      e.stopPropagation()
+      callbacks.onEdit(message, row, text)
+    }
+    actions.appendChild(editBtn)
+
+    const deleteBtn = dom.createElement('button')
+    deleteBtn.textContent = '🗑️'
+    deleteBtn.title = 'Delete'
+    deleteBtn.onclick = (e) => {
+      e.stopPropagation()
+      callbacks.onDelete(message, row)
+    }
+    actions.appendChild(deleteBtn)
+
+    meta.appendChild(actions)
+  }
 
   bubble.appendChild(meta)
   row.appendChild(bubble)
@@ -902,6 +1005,141 @@ export const longChatPane = {
       currentUser = authn.currentUser()?.value
     }
 
+    // Delete message handler
+    async function handleDelete(message, rowEl) {
+      if (!confirm('Delete this message?')) return
+
+      try {
+        const authFetch = context.authFetch ? context.authFetch() : fetch
+        const doc = subject.doc ? subject.doc() : subject
+
+        // Build SPARQL DELETE for all statements about this message
+        const msgUri = message.uri
+        const deleteQuery = `DELETE WHERE { <${msgUri}> ?p ?o . }`
+
+        const response = await authFetch(doc.value || doc.uri, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/sparql-update' },
+          body: deleteQuery
+        })
+
+        if (!response.ok) {
+          throw new Error(`Delete failed: ${response.status}`)
+        }
+
+        // Remove from UI
+        rowEl.remove()
+        renderedUris.delete(message.uri)
+        messages = messages.filter(m => m.uri !== message.uri)
+        statusEl.textContent = `${messages.length} messages`
+
+      } catch (err) {
+        console.error('Delete error:', err)
+        alert('Failed to delete: ' + err.message)
+      }
+    }
+
+    // Edit message handler
+    async function handleEdit(message, rowEl, textEl) {
+      // Replace text content with textarea
+      const originalContent = message.content
+      textEl.innerHTML = ''
+
+      const textarea = dom.createElement('textarea')
+      textarea.className = 'edit-textarea'
+      textarea.value = originalContent
+      textEl.appendChild(textarea)
+
+      const actions = dom.createElement('div')
+      actions.className = 'edit-actions'
+
+      const saveBtn = dom.createElement('button')
+      saveBtn.className = 'save-btn'
+      saveBtn.textContent = 'Save'
+
+      const cancelBtn = dom.createElement('button')
+      cancelBtn.className = 'cancel-btn'
+      cancelBtn.textContent = 'Cancel'
+
+      actions.appendChild(saveBtn)
+      actions.appendChild(cancelBtn)
+      textEl.appendChild(actions)
+
+      textarea.focus()
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length)
+
+      // Cancel handler
+      cancelBtn.onclick = () => {
+        textEl.innerHTML = ''
+        textEl.appendChild(renderMessageContent(dom, originalContent))
+      }
+
+      // Save handler
+      saveBtn.onclick = async () => {
+        const newContent = textarea.value.trim()
+        if (!newContent || newContent === originalContent) {
+          cancelBtn.onclick()
+          return
+        }
+
+        saveBtn.disabled = true
+        saveBtn.textContent = 'Saving...'
+
+        try {
+          const authFetch = context.authFetch ? context.authFetch() : fetch
+          const doc = subject.doc ? subject.doc() : subject
+          const msgUri = message.uri
+
+          // SPARQL DELETE old content + INSERT new content
+          const ns = $rdf.Namespace
+          const SIOC = ns('http://rdfs.org/sioc/ns#')
+
+          const updateQuery = `
+            DELETE { <${msgUri}> <${SIOC('content').value}> ?content }
+            INSERT { <${msgUri}> <${SIOC('content').value}> ${JSON.stringify(newContent)} }
+            WHERE { <${msgUri}> <${SIOC('content').value}> ?content }
+          `
+
+          const response = await authFetch(doc.value || doc.uri, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/sparql-update' },
+            body: updateQuery
+          })
+
+          if (!response.ok) {
+            throw new Error(`Edit failed: ${response.status}`)
+          }
+
+          // Update UI
+          message.content = newContent
+          message.edited = true
+          textEl.innerHTML = ''
+          textEl.appendChild(renderMessageContent(dom, newContent))
+
+          // Add edited indicator if not present
+          const meta = rowEl.querySelector('.message-meta')
+          if (meta && !meta.querySelector('.message-edited')) {
+            const edited = dom.createElement('span')
+            edited.className = 'message-edited'
+            edited.textContent = '(edited)'
+            meta.insertBefore(edited, meta.querySelector('.message-actions'))
+          }
+
+        } catch (err) {
+          console.error('Edit error:', err)
+          alert('Failed to edit: ' + err.message)
+          saveBtn.disabled = false
+          saveBtn.textContent = 'Save'
+        }
+      }
+    }
+
+    // Callbacks for message actions
+    const messageCallbacks = {
+      onEdit: handleEdit,
+      onDelete: handleDelete
+    }
+
     // Load messages from store
     async function loadMessages() {
       if (isFirstLoad) {
@@ -988,7 +1226,7 @@ export const longChatPane = {
           } else {
             for (const msg of allMessages) {
               const isOwn = currentUser && msg.authorUri === currentUser
-              const el = createMessageElement(dom, msg, isOwn)
+              const el = createMessageElement(dom, msg, isOwn, isOwn ? messageCallbacks : null)
               messagesContainer.appendChild(el)
               renderedUris.add(msg.uri)
             }
@@ -1002,7 +1240,7 @@ export const longChatPane = {
           // Append only new messages
           for (const msg of unrenderedMessages) {
             const isOwn = currentUser && msg.authorUri === currentUser
-            const el = createMessageElement(dom, msg, isOwn)
+            const el = createMessageElement(dom, msg, isOwn, isOwn ? messageCallbacks : null)
             messagesContainer.appendChild(el)
             renderedUris.add(msg.uri)
           }
@@ -1085,7 +1323,7 @@ export const longChatPane = {
         const empty = messagesContainer.querySelector('.empty-chat')
         if (empty) empty.remove()
 
-        const el = createMessageElement(dom, msg, true)
+        const el = createMessageElement(dom, msg, true, messageCallbacks)
         messagesContainer.appendChild(el)
         messagesContainer.scrollTop = messagesContainer.scrollHeight
 
