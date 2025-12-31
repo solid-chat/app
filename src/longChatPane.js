@@ -81,7 +81,15 @@ const styles = `
 
 .chat-name {
   font-weight: 500;
-  font-size: 16px;
+  font-size: 14px;
+  color: white;
+  text-decoration: none;
+  opacity: 0.95;
+}
+
+.chat-name:hover {
+  text-decoration: underline;
+  opacity: 1;
 }
 
 .chat-status {
@@ -409,9 +417,12 @@ export const longChatPane = {
     const titleDiv = dom.createElement('div')
     titleDiv.className = 'chat-title'
 
-    const nameEl = dom.createElement('div')
+    const nameEl = dom.createElement('a')
     nameEl.className = 'chat-name'
-    nameEl.textContent = decodeURIComponent(subject.uri.split('/').pop() || 'Chat')
+    nameEl.href = subject.uri
+    nameEl.target = '_blank'
+    nameEl.rel = 'noopener'
+    nameEl.textContent = subject.uri
     titleDiv.appendChild(nameEl)
 
     const statusEl = dom.createElement('div')
