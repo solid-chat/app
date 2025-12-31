@@ -344,7 +344,7 @@ async function handleAuthRedirect() {
 function updateAuthUI(isLoggedIn) {
   if (isLoggedIn && currentWebId) {
     const shortId = currentWebId.split('//')[1]?.split('/')[0] || currentWebId
-    userStatus.innerHTML = `Logged in as <strong><a href="${currentWebId}" target="_blank" style="color: var(--accent); text-decoration: none;">${shortId}</a></strong>`
+    userStatus.innerHTML = `Logged in as <strong><a href="${currentWebId}" target="_blank" style="color: white; text-decoration: underline; text-underline-offset: 2px;">${shortId}</a></strong>`
     loginArea.innerHTML = `<button id="logoutBtn">Logout</button>`
     document.getElementById('logoutBtn').addEventListener('click', handleLogout)
   } else {
