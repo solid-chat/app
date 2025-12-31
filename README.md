@@ -60,17 +60,14 @@ Modern, decentralized chat app built on the [Solid](https://solidproject.org) pr
 ## Quick Start
 
 ```bash
-# Clone the repo
+# Run instantly (no clone needed)
+npx solid-chat
+
+# Or clone and run
 git clone https://github.com/solid-chat/app.git
 cd app
-
-# Serve locally (choose one)
-npx serve .
-# or
-npx vite
-
-# Open in browser
-open http://localhost:3000
+npm install
+npm start
 ```
 
 ## Usage

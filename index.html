@@ -242,7 +242,7 @@
 <header class="app-header">
   <button class="mobile-menu-btn" id="mobileMenuBtn">☰</button>
   <div>
-    <h1>Solid Chat</h1>
+    <h1>Solid Chat <span id="appVersion" style="font-size: 12px; font-weight: 400; opacity: 0.8;"></span></h1>
     <p>Decentralized messaging for the web</p>
   </div>
   <div id="headerLoginArea" style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
@@ -1016,6 +1016,14 @@ window.solidChat = { createChat, copyShareLink, getMyPodRoot }
 
 // Initialize: handle auth redirect first, then render sidebar
 async function init() {
+  // Load and display version
+  fetch('./package.json')
+    .then(r => r.json())
+    .then(pkg => {
+      document.getElementById('appVersion').textContent = `v${pkg.version}`
+    })
+    .catch(() => {})
+
   // Set initial sound button state
   updateSoundButton()
   document.getElementById('soundToggle').addEventListener('click', toggleSound)

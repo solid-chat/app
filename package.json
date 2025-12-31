@@ -5,13 +5,20 @@
   "type": "module",
   "main": "src/index.js",
   "module": "src/index.js",
+  "bin": {
+    "solid-chat": "./bin/cli.js"
+  },
   "exports": {
     ".": "./src/index.js",
     "./longChatPane": "./src/longChatPane.js",
     "./chatListPane": "./src/chatListPane.js"
   },
   "files": [
-    "src/"
+    "src/",
+    "bin/",
+    "index.html",
+    "icons/",
+    "manifest.json"
   ],
   "scripts": {
     "start": "npx serve .",
@@ -41,6 +48,9 @@
   "homepage": "https://solid-chat.com",
   "author": "Solid Chat Contributors",
   "license": "AGPL-3.0",
+  "dependencies": {
+    "open": "^10.1.0"
+  },
   "devDependencies": {
     "jsdom": "^27.4.0",
     "vitest": "^4.0.16"
