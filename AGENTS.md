@@ -36,7 +36,9 @@ export const myPane = {
 - `dct:created`, `dct:creator`, `dct:title` - Metadata
 - `foaf:maker`, `foaf:img` - User profiles
 - `meeting:LongChat` - Chat type
-- `solid:publicTypeIndex` - Discovery
+- `solid:publicTypeIndex`, `solid:privateTypeIndex` - Discovery
+- `solid:TypeRegistration`, `solid:forClass`, `solid:instance` - Type Index entries
+- `schema:ReactAction` - Emoji reactions
 
 ### Real-time Updates
 - CSS (solidcommunity.net): WebSocketChannel2023
@@ -85,6 +87,24 @@ Check `subscribeToUpdates()` in `index.html`:
 Modify `src/chatListPane.js`:
 - State: `chatList` array, `STORAGE_KEY` for localStorage
 - Functions: `addChat()`, `removeChat()`, `renderChatList()`
+
+### Create new chats
+Key functions in `index.html`:
+- `createChat(url, title)` - Creates chat with RDF + ACL
+- `setPublicReadACL(url)` - Sets world-readable ACL
+- `registerInTypeIndex(url, isPublic)` - Registers in Type Index
+- `handleDeepLink()` - Handles `?chat=` URL parameter
+- `copyShareLink(uri)` - Copies shareable deep link
+- `getMyPodRoot()` - Gets user's pod storage root
+
+These are exposed via `window.solidChat` for use in panes.
+
+### Deep link flow
+```
+?chat=<url> → handleDeepLink()
+  ├── Chat exists → loadChat(url)
+  └── Chat 404 + my pod → createChat() → registerInTypeIndex() → loadChat()
+```
 
 ## Don't
 

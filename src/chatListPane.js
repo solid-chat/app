@@ -316,6 +316,47 @@ const styles = `
   box-shadow: none;
 }
 
+/* Modal tabs */
+.modal-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.modal-tab {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.modal-tab:hover {
+  background: var(--bg-hover);
+}
+
+.modal-tab.active {
+  background: linear-gradient(135deg, var(--gradient-start) 0%, var(--gradient-end) 100%);
+  color: white;
+  border-color: transparent;
+}
+
+.modal-url-preview {
+  font-size: 11px;
+  color: var(--text-muted);
+  word-break: break-all;
+  padding: 8px 12px;
+  background: var(--bg-hover);
+  border-radius: 6px;
+  margin-bottom: 16px;
+  display: none;
+}
+
 /* Delete button on chat item */
 .chat-item-delete {
   width: 24px;
@@ -546,31 +587,108 @@ function renderChatList() {
   })
 }
 
-// Show add chat modal
-function showAddModal(dom) {
+// Show add/create chat modal
+function showAddModal(dom, webId) {
   const overlay = dom.createElement('div')
   overlay.className = 'modal-overlay'
 
   const modal = dom.createElement('div')
   modal.className = 'modal'
 
-  modal.innerHTML = `
-    <div class="modal-title">Add Chat</div>
-    <input type="url" class="modal-input" placeholder="Enter chat URL..." />
-    <div class="modal-buttons">
-      <button class="modal-btn modal-btn-cancel">Cancel</button>
-      <button class="modal-btn modal-btn-add">Add</button>
-    </div>
-  `
+  // Check if user is logged in (can create chats)
+  const canCreate = !!webId
+
+  if (canCreate) {
+    modal.innerHTML = `
+      <div class="modal-title">Add or Create Chat</div>
+      <div class="modal-tabs">
+        <button class="modal-tab active" data-tab="add">Add Existing</button>
+        <button class="modal-tab" data-tab="create">Create New</button>
+      </div>
+      <div class="modal-tab-content" data-content="add">
+        <input type="url" class="modal-input" id="addUrlInput" placeholder="Enter chat URL..." />
+      </div>
+      <div class="modal-tab-content" data-content="create" style="display: none;">
+        <input type="text" class="modal-input" id="createTitleInput" placeholder="Chat title (e.g. Team Standup)" />
+        <select class="modal-input" id="createLocationSelect">
+          <option value="/public/chats/">Public (anyone with link)</option>
+          <option value="/private/chats/">Private (only you)</option>
+        </select>
+        <div class="modal-url-preview" id="urlPreview"></div>
+      </div>
+      <div class="modal-buttons">
+        <button class="modal-btn modal-btn-cancel">Cancel</button>
+        <button class="modal-btn modal-btn-add" id="actionBtn">Add</button>
+      </div>
+    `
+  } else {
+    modal.innerHTML = `
+      <div class="modal-title">Add Chat</div>
+      <input type="url" class="modal-input" id="addUrlInput" placeholder="Enter chat URL..." />
+      <p style="font-size: 12px; color: #a0aec0; margin-bottom: 16px;">Login to create new chats on your pod.</p>
+      <div class="modal-buttons">
+        <button class="modal-btn modal-btn-cancel">Cancel</button>
+        <button class="modal-btn modal-btn-add" id="actionBtn">Add</button>
+      </div>
+    `
+  }
 
   overlay.appendChild(modal)
   dom.body.appendChild(overlay)
 
-  const input = modal.querySelector('.modal-input')
   const cancelBtn = modal.querySelector('.modal-btn-cancel')
-  const addBtn = modal.querySelector('.modal-btn-add')
+  const actionBtn = modal.querySelector('#actionBtn')
+  const addUrlInput = modal.querySelector('#addUrlInput')
 
-  input.focus()
+  let currentTab = 'add'
+
+  // Tab switching
+  if (canCreate) {
+    const tabs = modal.querySelectorAll('.modal-tab')
+    const createTitleInput = modal.querySelector('#createTitleInput')
+    const createLocationSelect = modal.querySelector('#createLocationSelect')
+    const urlPreview = modal.querySelector('#urlPreview')
+
+    // Update URL preview
+    const updatePreview = () => {
+      const title = createTitleInput.value.trim()
+      const location = createLocationSelect.value
+      if (title && webId) {
+        const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+        const podRoot = getPodRootFromWebId(webId)
+        const fullUrl = `${podRoot}${location.slice(1)}${slug}.ttl`
+        urlPreview.textContent = fullUrl
+        urlPreview.style.display = 'block'
+      } else {
+        urlPreview.style.display = 'none'
+      }
+    }
+
+    createTitleInput.addEventListener('input', updatePreview)
+    createLocationSelect.addEventListener('change', updatePreview)
+
+    tabs.forEach(tab => {
+      tab.onclick = () => {
+        tabs.forEach(t => t.classList.remove('active'))
+        tab.classList.add('active')
+        currentTab = tab.dataset.tab
+
+        modal.querySelectorAll('.modal-tab-content').forEach(c => {
+          c.style.display = c.dataset.content === currentTab ? 'block' : 'none'
+        })
+
+        actionBtn.textContent = currentTab === 'add' ? 'Add' : 'Create'
+
+        if (currentTab === 'add') {
+          addUrlInput.focus()
+        } else {
+          createTitleInput.focus()
+        }
+      }
+    })
+  }
+
+  addUrlInput?.focus()
 
   const close = () => {
     overlay.remove()
@@ -582,25 +700,88 @@ function showAddModal(dom) {
 
   cancelBtn.onclick = close
 
-  addBtn.onclick = () => {
-    const uri = input.value.trim()
-    if (uri) {
-      addChat(uri)
-      activeUri = uri
-      renderChatList()
-      if (onSelectCallback) {
-        onSelectCallback(uri)
+  actionBtn.onclick = async () => {
+    if (currentTab === 'add') {
+      const uri = addUrlInput.value.trim()
+      if (uri) {
+        addChat(uri)
+        activeUri = uri
+        renderChatList()
+        if (onSelectCallback) {
+          onSelectCallback(uri)
+        }
+        close()
       }
+    } else {
+      // Create new chat
+      const createTitleInput = modal.querySelector('#createTitleInput')
+      const createLocationSelect = modal.querySelector('#createLocationSelect')
+
+      const title = createTitleInput.value.trim()
+      const location = createLocationSelect.value
+
+      if (!title) {
+        createTitleInput.focus()
+        return
+      }
+
+      const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+      const podRoot = getPodRootFromWebId(webId)
+      const chatUrl = `${podRoot}${location.slice(1)}${slug}.ttl`
+
+      actionBtn.disabled = true
+      actionBtn.textContent = 'Creating...'
+
+      try {
+        // Use the createChat from index.html
+        if (window.solidChat?.createChat) {
+          await window.solidChat.createChat(chatUrl, title)
+        } else {
+          throw new Error('createChat not available')
+        }
+
+        addChat(chatUrl, title)
+        activeUri = chatUrl
+        renderChatList()
+
+        // Copy share link
+        if (window.solidChat?.copyShareLink) {
+          window.solidChat.copyShareLink(chatUrl)
+        }
+
+        if (onSelectCallback) {
+          onSelectCallback(chatUrl)
+        }
+        close()
+      } catch (e) {
+        console.error('Failed to create chat:', e)
+        alert('Failed to create chat: ' + e.message)
+        actionBtn.disabled = false
+        actionBtn.textContent = 'Create'
+      }
+    }
+  }
+
+  // Handle Enter key
+  const handleKeydown = (e) => {
+    if (e.key === 'Enter') {
+      actionBtn.click()
+    } else if (e.key === 'Escape') {
       close()
     }
   }
 
-  input.onkeydown = (e) => {
-    if (e.key === 'Enter') {
-      addBtn.click()
-    } else if (e.key === 'Escape') {
-      close()
-    }
+  addUrlInput?.addEventListener('keydown', handleKeydown)
+  modal.querySelector('#createTitleInput')?.addEventListener('keydown', handleKeydown)
+}
+
+// Get pod root from WebID (simple extraction)
+function getPodRootFromWebId(webId) {
+  try {
+    const url = new URL(webId)
+    return `${url.protocol}//${url.host}/`
+  } catch {
+    return ''
   }
 }
 
@@ -681,8 +862,8 @@ export const chatListPane = {
     const addBtn = dom.createElement('button')
     addBtn.className = 'add-chat-btn'
     addBtn.textContent = '+'
-    addBtn.title = 'Add chat'
-    addBtn.onclick = () => showAddModal(dom)
+    addBtn.title = 'Add or create chat'
+    addBtn.onclick = () => showAddModal(dom, options.webId)
 
     header.appendChild(title)
     header.appendChild(addBtn)

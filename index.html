@@ -138,6 +138,17 @@
       to { transform: rotate(360deg); }
     }
 
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translate(-50%, 20px);
+      }
+      to {
+        opacity: 1;
+        transform: translate(-50%, 0);
+      }
+    }
+
     .error {
       background: #fff3f3;
       border: 1px solid #ffcdd2;
@@ -746,6 +757,263 @@ async function loadChat(uri) {
 // Default global chat
 const DEFAULT_CHAT_URI = 'https://solid-chat.solidweb.org/public/global/chat.ttl'
 
+// Get user's pod root from WebID
+async function getMyPodRoot() {
+  if (!currentWebId) return null
+
+  try {
+    const profileDoc = $rdf.sym(currentWebId).doc()
+    await store.fetcher.load(profileDoc)
+
+    const PIM = $rdf.Namespace('http://www.w3.org/ns/pim/space#')
+    const storage = store.any($rdf.sym(currentWebId), PIM('storage'))
+
+    if (storage) {
+      return storage.value
+    }
+
+    // Fallback: derive from WebID (e.g., https://user.pod/profile/card#me -> https://user.pod/)
+    const url = new URL(currentWebId)
+    return `${url.protocol}//${url.host}/`
+  } catch (e) {
+    console.warn('Failed to get pod root:', e)
+    // Fallback
+    const url = new URL(currentWebId)
+    return `${url.protocol}//${url.host}/`
+  }
+}
+
+// Create a new chat room
+async function createChat(chatUrl, title) {
+  // Default title from filename
+  if (!title) {
+    const filename = chatUrl.split('/').pop().replace('.ttl', '')
+    title = filename
+      .replace(/[-_]/g, ' ')
+      .replace(/\b\w/g, c => c.toUpperCase())
+  }
+
+  const now = new Date().toISOString()
+  const turtle = `@prefix dct: <http://purl.org/dc/terms/>.
+@prefix meeting: <http://www.w3.org/ns/pim/meeting#>.
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#>.
+
+<>
+    a meeting:LongChat ;
+    dct:title "${title}" ;
+    dct:created "${now}"^^xsd:dateTime .
+`
+
+  const authFetch = getAuthFetch()
+  const response = await authFetch(chatUrl, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'text/turtle' },
+    body: turtle
+  })
+
+  if (!response.ok) {
+    throw new Error(`Failed to create chat: ${response.status}`)
+  }
+
+  // Set public ACL and register in Type Index
+  const isPublic = chatUrl.includes('/public/')
+  if (isPublic) {
+    await setPublicReadACL(chatUrl)
+  }
+
+  // Register in Type Index (don't await - do it in background)
+  registerInTypeIndex(chatUrl, isPublic).catch(e => {
+    console.warn('Type Index registration failed:', e)
+  })
+
+  return { url: chatUrl, title }
+}
+
+// Set public read ACL for a resource
+async function setPublicReadACL(resourceUrl) {
+  const aclUrl = resourceUrl + '.acl'
+  const authFetch = getAuthFetch()
+
+  const acl = `@prefix acl: <http://www.w3.org/ns/auth/acl#>.
+@prefix foaf: <http://xmlns.com/foaf/0.1/>.
+
+<#public>
+    a acl:Authorization ;
+    acl:agentClass foaf:Agent ;
+    acl:accessTo <${resourceUrl}> ;
+    acl:mode acl:Read, acl:Append .
+
+<#owner>
+    a acl:Authorization ;
+    acl:agent <${currentWebId}> ;
+    acl:accessTo <${resourceUrl}> ;
+    acl:mode acl:Read, acl:Write, acl:Control .
+`
+
+  try {
+    await authFetch(aclUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'text/turtle' },
+      body: acl
+    })
+  } catch (e) {
+    console.warn('Failed to set ACL (might already exist):', e)
+  }
+}
+
+// Register chat in user's Type Index
+async function registerInTypeIndex(chatUrl, isPublic = true) {
+  if (!currentWebId) return
+
+  try {
+    // Load profile to find Type Index
+    const profileDoc = $rdf.sym(currentWebId).doc()
+    await store.fetcher.load(profileDoc)
+
+    const SOLID = $rdf.Namespace('http://www.w3.org/ns/solid/terms#')
+    const typeIndexPred = isPublic ? SOLID('publicTypeIndex') : SOLID('privateTypeIndex')
+    const typeIndex = store.any($rdf.sym(currentWebId), typeIndexPred)
+
+    if (!typeIndex) {
+      console.warn('No Type Index found for user')
+      return
+    }
+
+    // Check if already registered
+    await store.fetcher.load(typeIndex)
+    const MEETING = $rdf.Namespace('http://www.w3.org/ns/pim/meeting#')
+    const existing = store.statementsMatching(null, SOLID('instance'), $rdf.sym(chatUrl), typeIndex.doc())
+    if (existing.length > 0) {
+      console.log('Chat already registered in Type Index')
+      return
+    }
+
+    // Add registration
+    const regId = `#chat-${Date.now()}`
+    const insertQuery = `
+      INSERT DATA {
+        <${regId}> a <http://www.w3.org/ns/solid/terms#TypeRegistration> ;
+          <http://www.w3.org/ns/solid/terms#forClass> <http://www.w3.org/ns/pim/meeting#LongChat> ;
+          <http://www.w3.org/ns/solid/terms#instance> <${chatUrl}> .
+      }
+    `
+
+    const authFetch = getAuthFetch()
+    const response = await authFetch(typeIndex.value, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/sparql-update' },
+      body: insertQuery
+    })
+
+    if (response.ok) {
+      console.log('Chat registered in Type Index:', chatUrl)
+    } else {
+      console.warn('Failed to register in Type Index:', response.status)
+    }
+  } catch (e) {
+    console.warn('Failed to register in Type Index:', e)
+  }
+}
+
+// Handle deep link from URL params
+async function handleDeepLink() {
+  const params = new URLSearchParams(window.location.search)
+  const chatUrl = params.get('chat')
+  const title = params.get('title')
+
+  if (!chatUrl) return null
+
+  // Validate URL
+  try {
+    new URL(chatUrl)
+  } catch {
+    console.error('Invalid chat URL:', chatUrl)
+    return null
+  }
+
+  const authFetch = getAuthFetch()
+
+  try {
+    // Check if chat exists
+    const res = await authFetch(chatUrl, { method: 'HEAD' })
+
+    if (res.ok) {
+      // Exists - just return URL to load
+      // Clean URL
+      history.replaceState({}, '', window.location.pathname)
+      return chatUrl
+    } else if (res.status === 404) {
+      // Doesn't exist - try to create if it's on our pod
+      const myPod = await getMyPodRoot()
+      if (myPod && chatUrl.startsWith(myPod)) {
+        await createChat(chatUrl, title)
+        // Clean URL
+        history.replaceState({}, '', window.location.pathname)
+        return chatUrl
+      } else {
+        alert('Chat not found. You can only create chats on your own pod.')
+        history.replaceState({}, '', window.location.pathname)
+        return null
+      }
+    } else if (res.status === 401 || res.status === 403) {
+      // Need to login or no access
+      alert('Login required or no access to this chat.')
+      history.replaceState({}, '', window.location.pathname)
+      return null
+    }
+  } catch (e) {
+    console.error('Error handling deep link:', e)
+  }
+
+  return null
+}
+
+// Copy share link to clipboard
+function copyShareLink(uri) {
+  const shareUrl = `${window.location.origin}${window.location.pathname}?chat=${encodeURIComponent(uri)}`
+  navigator.clipboard.writeText(shareUrl).then(() => {
+    // Show toast
+    showToast('Link copied to clipboard!')
+  }).catch(err => {
+    console.error('Failed to copy:', err)
+    // Fallback: show URL in alert
+    prompt('Copy this link:', shareUrl)
+  })
+}
+
+// Toast notification
+function showToast(message) {
+  const existing = document.querySelector('.toast')
+  if (existing) existing.remove()
+
+  const toast = document.createElement('div')
+  toast.className = 'toast'
+  toast.textContent = message
+  toast.style.cssText = `
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1e1e2e;
+    color: white;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 14px;
+    z-index: 9999;
+    animation: fadeInUp 0.3s ease;
+  `
+  document.body.appendChild(toast)
+
+  setTimeout(() => {
+    toast.style.opacity = '0'
+    toast.style.transition = 'opacity 0.3s'
+    setTimeout(() => toast.remove(), 300)
+  }, 2500)
+}
+
+// Make createChat and copyShareLink available globally for chatListPane
+window.solidChat = { createChat, copyShareLink, getMyPodRoot }
+
 // Initialize: handle auth redirect first, then render sidebar
 async function init() {
   // Set initial sound button state
@@ -771,10 +1039,15 @@ async function init() {
   })
   sidebar.appendChild(sidebarElement)
 
-  // Check for URI in query string, or load default global chat
-  const params = new URLSearchParams(window.location.search)
-  const initialUri = params.get('uri') || DEFAULT_CHAT_URI
-  loadChat(initialUri)
+  // Check for ?chat= deep link first, then ?uri= (legacy), then default
+  const deepLinkedChat = await handleDeepLink()
+  if (deepLinkedChat) {
+    loadChat(deepLinkedChat)
+  } else {
+    const params = new URLSearchParams(window.location.search)
+    const initialUri = params.get('uri') || DEFAULT_CHAT_URI
+    loadChat(initialUri)
+  }
 }
 
 init()

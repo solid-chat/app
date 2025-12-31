@@ -40,8 +40,15 @@ Modern, decentralized chat app built on the [Solid](https://solidproject.org) pr
 ### Sidebar
 - Chat list with recent chats
 - Type Index auto-discovery of your chats
+- Create new chats on your pod
 - Manual chat URL addition
 - Persistent storage (localStorage)
+
+### Sharing & Deep Links
+- Share button (📋) copies shareable link
+- Deep link support: `?chat=<url>` loads or creates chat
+- Auto-create: links to your pod create rooms on demand
+- Type Index registration for discoverability
 
 ### UI/UX
 - Avatar display from WebID profiles
@@ -75,6 +82,26 @@ open http://localhost:3000
 ### Default Global Chats
 - `https://solid-chat.solidweb.org/public/global/chat.ttl` (faster)
 - `https://solid-chat.solidcommunity.net/public/global/chat.ttl`
+
+### Deep Links
+
+Share chats with a URL:
+```
+https://solid-chat.com/app?chat=https://you.solidweb.org/public/chats/my-room.ttl
+```
+
+**Behavior:**
+- If chat exists → loads it
+- If chat doesn't exist AND it's your pod → creates it automatically
+- Change one character → instant new room
+
+**Create rooms on demand:**
+```
+https://solid-chat.com/app?chat=https://you.pod/public/chats/meeting-monday.ttl
+https://solid-chat.com/app?chat=https://you.pod/public/chats/meeting-tuesday.ttl
+```
+
+Click the share button (📋) in any chat to copy the shareable link.
 
 ## Chat Data Format
 
@@ -127,8 +154,10 @@ This app implements the [Solid Chat specification](https://solid.github.io/chat/
 - [x] Simple markdown
 - [x] Edit/delete messages
 - [x] Emoji reactions
+- [x] Create new chats
+- [x] Deep link sharing (`?chat=<url>`)
+- [x] Type Index registration
 - [ ] @mentions with notifications
-- [ ] Create new chats
 - [ ] End-to-end encryption
 - [ ] Mobile responsive sidebar
 - [ ] Unread message badges

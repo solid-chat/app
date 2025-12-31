@@ -97,6 +97,26 @@ const styles = `
   opacity: 0.8;
 }
 
+.share-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255,255,255,0.2);
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+
+.share-btn:hover {
+  background: rgba(255,255,255,0.3);
+}
+
 .messages-container {
   flex: 1;
   overflow-y: auto;
@@ -960,6 +980,25 @@ export const longChatPane = {
     titleDiv.appendChild(statusEl)
 
     header.appendChild(titleDiv)
+
+    // Share button
+    const shareBtn = dom.createElement('button')
+    shareBtn.className = 'share-btn'
+    shareBtn.textContent = '📋'
+    shareBtn.title = 'Copy share link'
+    shareBtn.onclick = () => {
+      if (window.solidChat?.copyShareLink) {
+        window.solidChat.copyShareLink(subject.uri)
+      } else {
+        // Fallback
+        const shareUrl = `${window.location.origin}${window.location.pathname}?chat=${encodeURIComponent(subject.uri)}`
+        navigator.clipboard.writeText(shareUrl).catch(() => {
+          prompt('Copy this link:', shareUrl)
+        })
+      }
+    }
+    header.appendChild(shareBtn)
+
     container.appendChild(header)
 
     // Messages container
