@@ -510,6 +510,69 @@ const styles = `
   background: #e2e8f0;
   color: var(--text);
 }
+
+.reaction-bar {
+  display: none;
+  gap: 2px;
+  margin-top: 6px;
+  padding: 4px 6px;
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  position: absolute;
+  bottom: -8px;
+  left: 8px;
+}
+
+.message-row:hover .reaction-bar {
+  display: flex;
+}
+
+.reaction-bar button {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: transform 0.15s, background 0.15s;
+}
+
+.reaction-bar button:hover {
+  transform: scale(1.2);
+  background: #f0f2f8;
+}
+
+.reactions-display {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.reaction-chip {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  background: #f0f2f8;
+  border-radius: 12px;
+  padding: 2px 8px;
+  font-size: 13px;
+  border: 1px solid #e2e8f0;
+}
+
+.reaction-chip .emoji {
+  font-size: 14px;
+}
+
+.reaction-chip .count {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.message-bubble {
+  position: relative;
+}
 `
 
 // Inject styles once
@@ -536,6 +599,9 @@ const URL_REGEX = /(https?:\/\/[^\s<>"{}|\\^`[\]]+)/gi
 const IMAGE_EXT = /\.(jpg|jpeg|png|gif|webp|svg)(\?.*)?$/i
 const VIDEO_EXT = /\.(mp4|webm|ogg|mov)(\?.*)?$/i
 const AUDIO_EXT = /\.(mp3|wav|ogg|m4a|aac)(\?.*)?$/i
+
+// Preset reactions
+const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🎉']
 
 // Escape HTML to prevent XSS
 function escapeHtml(text) {
@@ -740,6 +806,38 @@ function createMessageElement(dom, message, isOwn, callbacks) {
   }
 
   bubble.appendChild(meta)
+
+  // Reactions display (existing reactions)
+  const reactionsDisplay = dom.createElement('div')
+  reactionsDisplay.className = 'reactions-display'
+  reactionsDisplay.dataset.msgUri = message.uri
+  if (message.reactions) {
+    for (const [emoji, users] of Object.entries(message.reactions)) {
+      const chip = dom.createElement('div')
+      chip.className = 'reaction-chip'
+      chip.innerHTML = `<span class="emoji">${emoji}</span><span class="count">${users.length}</span>`
+      chip.title = users.map(u => u.split('/').pop().split('#')[0]).join(', ')
+      reactionsDisplay.appendChild(chip)
+    }
+  }
+  bubble.appendChild(reactionsDisplay)
+
+  // Reaction bar (hover to show)
+  if (callbacks?.onReact) {
+    const reactionBar = dom.createElement('div')
+    reactionBar.className = 'reaction-bar'
+    for (const emoji of REACTIONS) {
+      const btn = dom.createElement('button')
+      btn.textContent = emoji
+      btn.onclick = (e) => {
+        e.stopPropagation()
+        callbacks.onReact(message, emoji, reactionsDisplay)
+      }
+      reactionBar.appendChild(btn)
+    }
+    bubble.appendChild(reactionBar)
+  }
+
   row.appendChild(bubble)
 
   return row
@@ -1143,10 +1241,76 @@ export const longChatPane = {
       }
     }
 
+    // React to message handler
+    async function handleReact(message, emoji, reactionsDisplay) {
+      // Check if logged in
+      const authnCheck = context.session?.logic?.authn || globalThis.SolidLogic?.authn
+      const reactUser = authnCheck?.currentUser()?.value || currentUser
+
+      if (!reactUser) {
+        alert('Please log in to react')
+        return
+      }
+
+      try {
+        const authFetch = context.authFetch ? context.authFetch() : fetch
+        const doc = subject.doc ? subject.doc() : subject
+
+        // Create reaction URI
+        const reactionId = `#reaction-${Date.now()}`
+        const reactionUri = subject.uri + reactionId
+
+        // RDF namespace
+        const SCHEMA = 'http://schema.org/'
+
+        // SPARQL INSERT for reaction
+        const insertQuery = `
+          INSERT DATA {
+            <${reactionUri}> a <${SCHEMA}ReactAction> ;
+              <${SCHEMA}about> <${message.uri}> ;
+              <${SCHEMA}agent> <${reactUser}> ;
+              <${SCHEMA}name> "${emoji}" .
+          }
+        `
+
+        const response = await authFetch(doc.value || doc.uri, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/sparql-update' },
+          body: insertQuery
+        })
+
+        if (!response.ok) {
+          throw new Error(`React failed: ${response.status}`)
+        }
+
+        // Update UI - add or increment reaction
+        if (!message.reactions) message.reactions = {}
+        if (!message.reactions[emoji]) message.reactions[emoji] = []
+        if (!message.reactions[emoji].includes(reactUser)) {
+          message.reactions[emoji].push(reactUser)
+        }
+
+        // Re-render reactions display
+        reactionsDisplay.innerHTML = ''
+        for (const [e, users] of Object.entries(message.reactions)) {
+          const chip = dom.createElement('div')
+          chip.className = 'reaction-chip'
+          chip.innerHTML = `<span class="emoji">${e}</span><span class="count">${users.length}</span>`
+          chip.title = users.map(u => u.split('/').pop().split('#')[0]).join(', ')
+          reactionsDisplay.appendChild(chip)
+        }
+
+      } catch (err) {
+        console.error('React error:', err)
+        alert('Failed to react: ' + err.message)
+      }
+    }
+
     // Callbacks for message actions
     const messageCallbacks = {
       onEdit: handleEdit,
-      onDelete: handleDelete
+      onDelete: handleDelete,
+      onReact: handleReact
     }
 
     // Load messages from store
@@ -1222,6 +1386,27 @@ export const longChatPane = {
         // Keep only last 100 messages for performance
         const allMessages = newMessages.slice(-100)
 
+        // Load reactions for messages
+        const SCHEMA = ns('http://schema.org/')
+        const reactionStatements = store.statementsMatching(null, SCHEMA('about'), null, doc)
+        for (const st of reactionStatements) {
+          const reactionNode = st.subject
+          const aboutMsg = st.object.value
+          const emoji = store.any(reactionNode, SCHEMA('name'), null, doc)?.value
+          const agent = store.any(reactionNode, SCHEMA('agent'), null, doc)?.value
+
+          if (emoji && agent) {
+            const msg = allMessages.find(m => m.uri === aboutMsg)
+            if (msg) {
+              if (!msg.reactions) msg.reactions = {}
+              if (!msg.reactions[emoji]) msg.reactions[emoji] = []
+              if (!msg.reactions[emoji].includes(agent)) {
+                msg.reactions[emoji].push(agent)
+              }
+            }
+          }
+        }
+
         // Find messages that haven't been rendered yet
         const unrenderedMessages = allMessages.filter(m => !renderedUris.has(m.uri))
 
@@ -1235,7 +1420,7 @@ export const longChatPane = {
           } else {
             for (const msg of allMessages) {
               const isOwn = currentUser && msg.authorUri === currentUser
-              const el = createMessageElement(dom, msg, isOwn, isOwn ? messageCallbacks : null)
+              const el = createMessageElement(dom, msg, isOwn, messageCallbacks)
               messagesContainer.appendChild(el)
               renderedUris.add(msg.uri)
             }
@@ -1249,7 +1434,7 @@ export const longChatPane = {
           // Append only new messages
           for (const msg of unrenderedMessages) {
             const isOwn = currentUser && msg.authorUri === currentUser
-            const el = createMessageElement(dom, msg, isOwn, isOwn ? messageCallbacks : null)
+            const el = createMessageElement(dom, msg, isOwn, messageCallbacks)
             messagesContainer.appendChild(el)
             renderedUris.add(msg.uri)
           }
