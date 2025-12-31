@@ -477,9 +477,19 @@ async function subscribeToUpdates(uri) {
     reconnectTimeout = null
   }
 
+  const authFetch = getAuthFetch()
+  currentChatUri = uri
+
   try {
-    // Fetch the resource to get Updates-Via header
-    const authFetch = getAuthFetch()
+    const url = new URL(uri)
+
+    // Check if solidcommunity.net - use WebSocketChannel2023
+    if (url.host.endsWith('solidcommunity.net')) {
+      await subscribeWebSocketChannel2023(uri, authFetch)
+      return
+    }
+
+    // Otherwise try legacy Updates-Via
     const response = await authFetch(uri, { method: 'HEAD' })
     const updatesVia = response.headers.get('Updates-Via')
 
@@ -489,49 +499,93 @@ async function subscribeToUpdates(uri) {
     }
 
     console.log('Subscribing to updates via:', updatesVia)
+    connectLegacyWebSocket(updatesVia, uri)
 
-    // Connect to WebSocket
-    currentWebSocket = new WebSocket(updatesVia, ['solid-0.1'])
-    currentChatUri = uri
+  } catch (err) {
+    console.error('Failed to subscribe to updates:', err)
+  }
+}
+
+// WebSocketChannel2023 (CSS/solidcommunity.net)
+async function subscribeWebSocketChannel2023(uri, authFetch) {
+  try {
+    const response = await authFetch('https://solidcommunity.net/.notifications/WebSocketChannel2023/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/ld+json' },
+      body: JSON.stringify({
+        "@context": ["https://www.w3.org/ns/solid/notification/v1"],
+        "type": "http://www.w3.org/ns/solid/notifications#WebSocketChannel2023",
+        "topic": uri
+      })
+    })
+
+    if (!response.ok) {
+      console.log('WebSocketChannel2023 subscription failed:', response.status)
+      return
+    }
+
+    const { receiveFrom } = await response.json()
+    console.log('WebSocketChannel2023 connecting to:', receiveFrom)
+
+    currentWebSocket = new WebSocket(receiveFrom)
 
     currentWebSocket.onopen = () => {
-      console.log('WebSocket connected')
-      // Subscribe to the resource
-      currentWebSocket.send(`sub ${uri}`)
+      console.log('WebSocketChannel2023 connected')
     }
 
     currentWebSocket.onmessage = (event) => {
-      const data = event.data
-      console.log('WebSocket message:', data)
-
-      // Check if it's a pub notification for our resource
-      if (data.startsWith('pub ')) {
-        const updatedUri = data.slice(4).trim()
-        if (updatedUri === uri || uri.startsWith(updatedUri)) {
-          console.log('Chat updated, refreshing...')
-          // Small delay to let server finish writing
-          setTimeout(() => refreshChat(), 500)
-        }
-      }
+      console.log('WebSocketChannel2023 notification:', event.data)
+      // Any message means the resource changed
+      setTimeout(() => refreshChat(), 500)
     }
 
     currentWebSocket.onclose = () => {
-      console.log('WebSocket closed')
-      // Attempt reconnect after 5 seconds
+      console.log('WebSocketChannel2023 closed')
       if (currentChatUri === uri) {
-        reconnectTimeout = setTimeout(() => {
-          console.log('Attempting to reconnect...')
-          subscribeToUpdates(uri)
-        }, 5000)
+        reconnectTimeout = setTimeout(() => subscribeToUpdates(uri), 5000)
       }
     }
 
     currentWebSocket.onerror = (err) => {
-      console.error('WebSocket error:', err)
+      console.error('WebSocketChannel2023 error:', err)
     }
 
   } catch (err) {
-    console.error('Failed to subscribe to updates:', err)
+    console.error('WebSocketChannel2023 failed:', err)
+  }
+}
+
+// Legacy Updates-Via WebSocket (NSS)
+function connectLegacyWebSocket(updatesVia, uri) {
+  currentWebSocket = new WebSocket(updatesVia, ['solid-0.1'])
+
+  currentWebSocket.onopen = () => {
+    console.log('Legacy WebSocket connected')
+    currentWebSocket.send(`sub ${uri}`)
+  }
+
+  currentWebSocket.onmessage = (event) => {
+    const data = event.data
+    console.log('Legacy WebSocket message:', data)
+
+    if (data.startsWith('pub ')) {
+      const updatedUri = data.slice(4).trim()
+      if (updatedUri === uri || uri.startsWith(updatedUri)) {
+        console.log('Chat updated, refreshing...')
+        setTimeout(() => refreshChat(), 500)
+      }
+    }
+  }
+
+  currentWebSocket.onclose = () => {
+    console.log('Legacy WebSocket closed')
+    if (currentChatUri === uri) {
+      reconnectTimeout = setTimeout(() => subscribeToUpdates(uri), 5000)
+    }
+  }
+
+  currentWebSocket.onerror = (err) => {
+    console.error('Legacy WebSocket error:', err)
   }
 }
 
