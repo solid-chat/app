@@ -937,6 +937,8 @@ export const longChatPane = {
         messagesContainer.appendChild(el)
         messagesContainer.scrollTop = messagesContainer.scrollHeight
 
+        // Track as rendered to prevent duplicate on refresh
+        renderedUris.add(msg.uri)
         messages.push(msg)
         statusEl.textContent = `${messages.length} messages`
 
