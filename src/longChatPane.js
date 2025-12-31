@@ -110,6 +110,8 @@ const styles = `
 .message-row {
   display: flex;
   margin-bottom: 2px;
+  align-items: flex-end;
+  gap: 8px;
 }
 
 .message-row.sent {
@@ -118,6 +120,31 @@ const styles = `
 
 .message-row.received {
   justify-content: flex-start;
+}
+
+.message-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--gradient-start) 0%, var(--gradient-end) 100%);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.message-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.message-row.sent .message-avatar {
+  order: 2;
 }
 
 .message-bubble {
@@ -250,6 +277,69 @@ const styles = `
   transform: none;
 }
 
+.emoji-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  transition: background 0.2s, color 0.2s;
+  flex-shrink: 0;
+}
+
+.emoji-btn:hover {
+  background: #f0f2f8;
+  color: var(--text);
+}
+
+.emoji-picker {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin-bottom: 8px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+  padding: 8px;
+  display: none;
+  z-index: 100;
+}
+
+.emoji-picker.open {
+  display: block;
+}
+
+.emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 2px;
+}
+
+.emoji-grid button {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  font-size: 18px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+
+.emoji-grid button:hover {
+  background: #f0f2f8;
+}
+
+.input-area {
+  position: relative;
+}
+
 .send-btn svg {
   width: 20px;
   height: 20px;
@@ -301,10 +391,45 @@ function getInitials(name) {
   return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
 }
 
+// Avatar cache
+const avatarCache = new Map()
+
+// Fetch avatar from WebID profile
+async function fetchAvatar(webId, store, $rdf) {
+  if (!webId) return null
+  if (avatarCache.has(webId)) return avatarCache.get(webId)
+
+  try {
+    const profile = $rdf.sym(webId)
+    await store.fetcher.load(profile.doc())
+
+    const ns = $rdf.Namespace
+    const FOAF = ns('http://xmlns.com/foaf/0.1/')
+    const VCARD = ns('http://www.w3.org/2006/vcard/ns#')
+
+    const avatar = store.any(profile, FOAF('img'))?.value ||
+                   store.any(profile, FOAF('depiction'))?.value ||
+                   store.any(profile, VCARD('hasPhoto'))?.value
+
+    avatarCache.set(webId, avatar)
+    return avatar
+  } catch (e) {
+    avatarCache.set(webId, null)
+    return null
+  }
+}
+
 // Create message element
 function createMessageElement(dom, message, isOwn) {
   const row = dom.createElement('div')
   row.className = `message-row ${isOwn ? 'sent' : 'received'}`
+
+  // Avatar
+  const avatar = dom.createElement('div')
+  avatar.className = 'message-avatar'
+  avatar.textContent = getInitials(message.author || '?')
+  avatar.dataset.webid = message.authorUri || ''
+  row.appendChild(avatar)
 
   const bubble = dom.createElement('div')
   bubble.className = `message-bubble ${isOwn ? 'sent' : 'received'}`
@@ -442,6 +567,36 @@ export const longChatPane = {
     const inputArea = dom.createElement('div')
     inputArea.className = 'input-area'
 
+    // Emoji picker
+    const emojiPicker = dom.createElement('div')
+    emojiPicker.className = 'emoji-picker'
+    const emojiGrid = dom.createElement('div')
+    emojiGrid.className = 'emoji-grid'
+    const emojis = ['😀','😂','😊','🥰','😎','🤔','😢','😡','👍','👎','❤️','🔥','🎉','✨','💬','👋','🙏','💪','✅','❌','⭐','💡','📌','🚀','☕','🌟','💯','🤝']
+    emojis.forEach(e => {
+      const btn = dom.createElement('button')
+      btn.textContent = e
+      btn.type = 'button'
+      btn.onclick = () => {
+        input.value += e
+        input.focus()
+        sendBtn.disabled = !input.value.trim()
+      }
+      emojiGrid.appendChild(btn)
+    })
+    emojiPicker.appendChild(emojiGrid)
+    inputArea.appendChild(emojiPicker)
+
+    // Emoji button
+    const emojiBtn = dom.createElement('button')
+    emojiBtn.className = 'emoji-btn'
+    emojiBtn.textContent = '😊'
+    emojiBtn.type = 'button'
+    emojiBtn.onclick = () => {
+      emojiPicker.classList.toggle('open')
+    }
+    inputArea.appendChild(emojiBtn)
+
     const inputWrapper = dom.createElement('div')
     inputWrapper.className = 'input-wrapper'
 
@@ -457,6 +612,13 @@ export const longChatPane = {
     sendBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>'
     sendBtn.disabled = true
     inputArea.appendChild(sendBtn)
+
+    // Close emoji picker when clicking elsewhere
+    dom.addEventListener('click', (e) => {
+      if (!emojiPicker.contains(e.target) && e.target !== emojiBtn) {
+        emojiPicker.classList.remove('open')
+      }
+    })
 
     container.appendChild(inputArea)
 
@@ -489,11 +651,16 @@ export const longChatPane = {
         const doc = subject.doc ? subject.doc() : subject
         await store.fetcher.load(doc)
 
-        // Get chat title from various predicates
-        const title = store.any(null, DCT('title'), null, doc)?.value ||
-                     store.any(null, DC('title'), null, doc)?.value
+        // Get chat title from the subject or document
+        const chatNode = subject.uri.includes('#') ? subject : $rdf.sym(subject.uri + '#this')
+        const title = store.any(chatNode, DCT('title'), null, doc)?.value ||
+                     store.any(chatNode, DC('title'), null, doc)?.value ||
+                     store.any(subject, DCT('title'), null, doc)?.value ||
+                     store.any(null, DCT('title'), null, doc)?.value
         if (title) {
+          // Show title with URI as subtitle
           nameEl.textContent = title
+          nameEl.title = subject.uri  // Tooltip shows full URI
         }
 
         // Extract all messages with sioc:content from this document
@@ -556,6 +723,20 @@ export const longChatPane = {
 
         // Scroll to bottom
         messagesContainer.scrollTop = messagesContainer.scrollHeight
+
+        // Load avatars asynchronously
+        const uniqueWebIds = [...new Set(messages.map(m => m.authorUri).filter(Boolean))]
+        for (const webId of uniqueWebIds) {
+          fetchAvatar(webId, store, $rdf).then(avatarUrl => {
+            if (avatarUrl) {
+              // Update all avatars for this WebID
+              const avatars = messagesContainer.querySelectorAll(`.message-avatar[data-webid="${webId}"]`)
+              avatars.forEach(el => {
+                el.innerHTML = `<img src="${avatarUrl}" alt="" />`
+              })
+            }
+          })
+        }
 
       } catch (err) {
         console.error('Error loading chat:', err)
