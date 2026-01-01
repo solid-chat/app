@@ -695,6 +695,10 @@ function renderMessageContent(dom, content) {
         img.alt = 'Image'
         img.loading = 'lazy'
         img.onclick = () => window.open(part, '_blank')
+        img.onload = () => {
+          const mc = img.closest('.messages-container')
+          if (mc) mc.scrollTop = mc.scrollHeight
+        }
         wrapper.appendChild(img)
         container.appendChild(wrapper)
       } else if (VIDEO_EXT.test(part)) {
