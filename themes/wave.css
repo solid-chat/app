@@ -603,6 +603,15 @@
     justify-content: space-between;
   }
 
+  .content-header .mobile-menu-btn {
+    color: white;
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .content-header .mobile-menu-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+
   .content-header .user-status {
     display: none;
   }
