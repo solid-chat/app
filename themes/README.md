@@ -118,6 +118,18 @@ For elements not controlled by variables, use direct selectors:
 - Similar layout to Solid for consistency
 - Green message bubbles for sent messages
 
+### Telegram
+- Telegram-inspired blue color scheme (#0088cc)
+- Light, airy aesthetic
+- Light green sent message bubbles
+- Subtle dot pattern background
+
+### Signal
+- Signal-inspired blue (#3A76F0)
+- Clean, minimal, privacy-focused aesthetic
+- Blue sent message bubbles with white text
+- Pure white chat background
+
 ## Tips
 
 - Both themes hide `.panel-header` and `.status-badge` for cleaner UI
