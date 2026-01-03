@@ -1717,6 +1717,12 @@ export const longChatPane = {
     container.refresh = async function() {
       // Re-fetch the document
       const doc = subject.doc ? subject.doc() : subject
+
+      // Clear existing statements for this document before reloading
+      // This ensures deleted messages are properly removed from the store
+      const existingStatements = store.statementsMatching(null, null, null, doc)
+      existingStatements.forEach(st => store.remove(st))
+
       await store.fetcher.load(doc, { force: true })
       await loadMessages()
     }
