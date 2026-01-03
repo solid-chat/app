@@ -1717,29 +1717,41 @@ export const longChatPane = {
     container.refresh = async function() {
       // Re-fetch the document
       const doc = subject.doc ? subject.doc() : subject
+      const docUri = doc.uri || doc.value
+
+      console.log('[refresh] Starting refresh for:', docUri)
 
       // Clear existing statements for this document before reloading
       // This ensures deleted messages are properly removed from the store
       const existingStatements = store.statementsMatching(null, null, null, doc)
+      console.log('[refresh] Clearing', existingStatements.length, 'statements from store')
       existingStatements.forEach(st => store.remove(st))
 
       // Fetch with cache-busting to bypass browser cache (important for mobile Chrome)
       const authFetch = context.authFetch ? context.authFetch() : fetch
-      const docUri = doc.uri || doc.value
       const cacheBustUrl = docUri + (docUri.includes('?') ? '&' : '?') + '_t=' + Date.now()
 
+      console.log('[refresh] Fetching:', cacheBustUrl)
       const response = await authFetch(cacheBustUrl, {
-        headers: { 'Accept': 'text/turtle, application/ld+json, application/rdf+xml' },
+        headers: {
+          'Accept': 'text/turtle, application/ld+json, application/rdf+xml',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache'
+        },
         cache: 'no-store'
       })
 
       if (response.ok) {
         const text = await response.text()
         const contentType = response.headers.get('content-type') || 'text/turtle'
+        console.log('[refresh] Got', text.length, 'bytes, parsing as', contentType)
         $rdf.parse(text, store, docUri, contentType)
+      } else {
+        console.error('[refresh] Fetch failed:', response.status, response.statusText)
       }
 
       await loadMessages()
+      console.log('[refresh] Done, messages:', messages.length)
     }
 
     // Initial load
