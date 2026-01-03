@@ -360,13 +360,14 @@
 }
 
 .btn-secondary {
-  background: transparent;
+  background: white;
   color: var(--text-secondary);
   border: 1px solid var(--border);
 }
 
 .btn-secondary:hover {
   background: #f6f6f6;
+  border-color: #3A76F0;
 }
 
 .input-field {

@@ -350,13 +350,14 @@
 }
 
 .btn-secondary {
-  background: transparent;
+  background: white;
   color: var(--text-secondary);
   border: 1px solid var(--border);
 }
 
 .btn-secondary:hover {
   background: var(--bg);
+  border-color: var(--theme-primary);
 }
 
 .input-field {
