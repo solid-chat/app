@@ -1191,9 +1191,13 @@ export const longChatPane = {
         const doc = subject.doc ? subject.doc() : subject
         const msgUri = message.uri
 
+        console.log('[delete] Starting delete for:', msgUri)
+
         // Get all triples about this message from the store
         const msgNode = store.sym(msgUri)
         const statements = store.statementsMatching(msgNode, null, null, doc)
+
+        console.log('[delete] Found', statements.length, 'statements to delete')
 
         if (statements.length === 0) {
           throw new Error('No statements found for this message')
@@ -1227,6 +1231,7 @@ export const longChatPane = {
         }).join('\n')
 
         const deleteQuery = `DELETE DATA {\n${triples}\n}`
+        console.log('[delete] Sending PATCH to:', doc.value || doc.uri)
 
         const response = await authFetch(doc.value || doc.uri, {
           method: 'PATCH',
@@ -1234,9 +1239,15 @@ export const longChatPane = {
           body: deleteQuery
         })
 
+        console.log('[delete] PATCH response:', response.status, response.statusText)
+
         if (!response.ok) {
+          const errorText = await response.text()
+          console.error('[delete] PATCH error body:', errorText)
           throw new Error(`Delete failed: ${response.status}`)
         }
+
+        console.log('[delete] Delete successful, updating local state')
 
         // Remove from local store (prevents ghost re-render on WebSocket refresh)
         statements.forEach(st => store.remove(st))
