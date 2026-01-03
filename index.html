@@ -91,14 +91,6 @@
           <span id="userStatus" class="user-status">Loading...</span>
         </div>
         <div class="header-right" id="headerLoginArea">
-          <div class="theme-switcher">
-            <select id="themeSelect" title="Switch theme">
-              <option value="solid">Solid</option>
-              <option value="wave">Wave</option>
-              <option value="telegram">Telegram</option>
-              <option value="signal">Signal</option>
-            </select>
-          </div>
           <span id="loginArea"></span>
         </div>
       </div>
@@ -143,9 +135,7 @@ function loadTheme(themeName) {
   themeLink.href = theme.file
   localStorage.setItem('solidchat-theme', themeName)
 
-  // Update selects
-  const select = document.getElementById('themeSelect')
-  if (select) select.value = themeName
+  // Update sidebar select
   const sidebarSelect = document.getElementById('sidebarThemeSelect')
   if (sidebarSelect) sidebarSelect.value = themeName
 
@@ -167,10 +157,6 @@ function loadTheme(themeName) {
 function initTheme() {
   const saved = localStorage.getItem('solidchat-theme') || 'solid'
   loadTheme(saved)
-
-  document.getElementById('themeSelect').addEventListener('change', (e) => {
-    loadTheme(e.target.value)
-  })
 
   document.getElementById('sidebarThemeSelect').addEventListener('change', (e) => {
     loadTheme(e.target.value)
