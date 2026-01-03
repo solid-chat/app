@@ -996,10 +996,25 @@ function showToast(message) {
 window.solidChat = { createChat, copyShareLink, getMyPodRoot }
 window.toggleSound = toggleSound
 
+// Detect bottom nav bar overlay and set CSS variable
+function updateBottomOffset() {
+  if (window.visualViewport) {
+    const offset = window.innerHeight - window.visualViewport.height;
+    document.documentElement.style.setProperty('--bottom-offset', `${Math.max(0, offset)}px`);
+  }
+}
+
 // Initialize: handle auth redirect first, then render sidebar
 async function init() {
   // Initialize theme
   initTheme()
+
+  // Set up viewport detection for Android nav bar
+  updateBottomOffset()
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', updateBottomOffset)
+  }
+  window.addEventListener('resize', updateBottomOffset)
 
   // Sound button is now created in chatListPane with onclick handler
 
