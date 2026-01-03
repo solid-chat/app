@@ -1532,9 +1532,16 @@ export const longChatPane = {
         const currentUris = new Set(allMessages.map(m => m.uri))
         const deletedUris = [...renderedUris].filter(uri => !currentUris.has(uri))
 
+        console.log('[loadMessages] renderedUris:', [...renderedUris])
+        console.log('[loadMessages] currentUris:', [...currentUris])
+        console.log('[loadMessages] deletedUris:', deletedUris)
+        console.log('[loadMessages] unrenderedMessages:', unrenderedMessages.length)
+
         // Remove deleted messages from UI
         for (const uri of deletedUris) {
+          console.log('[loadMessages] Removing deleted message:', uri)
           const el = messagesContainer.querySelector(`[data-uri="${uri}"]`)
+          console.log('[loadMessages] Found element:', !!el)
           if (el) el.remove()
           renderedUris.delete(uri)
         }
