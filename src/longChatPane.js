@@ -235,6 +235,7 @@ const styles = `
 .input-area {
   background: white;
   padding: 12px 20px;
+  padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
   display: flex;
   align-items: flex-end;
   gap: 12px;
