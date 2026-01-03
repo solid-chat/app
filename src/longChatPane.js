@@ -1517,6 +1517,17 @@ export const longChatPane = {
         // Find messages that haven't been rendered yet
         const unrenderedMessages = allMessages.filter(m => !renderedUris.has(m.uri))
 
+        // Find messages that were rendered but no longer exist (deleted)
+        const currentUris = new Set(allMessages.map(m => m.uri))
+        const deletedUris = [...renderedUris].filter(uri => !currentUris.has(uri))
+
+        // Remove deleted messages from UI
+        for (const uri of deletedUris) {
+          const el = messagesContainer.querySelector(`[data-uri="${uri}"]`)
+          if (el) el.remove()
+          renderedUris.delete(uri)
+        }
+
         // Render only new messages (or all on first load)
         if (isFirstLoad) {
           if (allMessages.length === 0) {
