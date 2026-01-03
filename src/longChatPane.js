@@ -1723,7 +1723,22 @@ export const longChatPane = {
       const existingStatements = store.statementsMatching(null, null, null, doc)
       existingStatements.forEach(st => store.remove(st))
 
-      await store.fetcher.load(doc, { force: true })
+      // Fetch with cache-busting to bypass browser cache (important for mobile Chrome)
+      const authFetch = context.authFetch ? context.authFetch() : fetch
+      const docUri = doc.uri || doc.value
+      const cacheBustUrl = docUri + (docUri.includes('?') ? '&' : '?') + '_t=' + Date.now()
+
+      const response = await authFetch(cacheBustUrl, {
+        headers: { 'Accept': 'text/turtle, application/ld+json, application/rdf+xml' },
+        cache: 'no-store'
+      })
+
+      if (response.ok) {
+        const text = await response.text()
+        const contentType = response.headers.get('content-type') || 'text/turtle'
+        $rdf.parse(text, store, docUri, contentType)
+      }
+
       await loadMessages()
     }
 
