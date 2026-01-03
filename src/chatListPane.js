@@ -104,6 +104,7 @@ const styles = `
   background: linear-gradient(135deg, var(--gradient-start) 0%, var(--gradient-end) 100%);
   color: white;
   padding: 16px 16px;
+  min-height: 76px;
   display: flex;
   align-items: center;
   justify-content: space-between;
