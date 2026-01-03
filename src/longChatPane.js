@@ -1191,13 +1191,9 @@ export const longChatPane = {
         const doc = subject.doc ? subject.doc() : subject
         const msgUri = message.uri
 
-        console.log('[delete] Starting delete for:', msgUri)
-
         // Get all triples about this message from the store
         const msgNode = store.sym(msgUri)
         const statements = store.statementsMatching(msgNode, null, null, doc)
-
-        console.log('[delete] Found', statements.length, 'statements to delete')
 
         if (statements.length === 0) {
           throw new Error('No statements found for this message')
@@ -1231,7 +1227,6 @@ export const longChatPane = {
         }).join('\n')
 
         const deleteQuery = `DELETE DATA {\n${triples}\n}`
-        console.log('[delete] Sending PATCH to:', doc.value || doc.uri)
 
         const response = await authFetch(doc.value || doc.uri, {
           method: 'PATCH',
@@ -1239,15 +1234,9 @@ export const longChatPane = {
           body: deleteQuery
         })
 
-        console.log('[delete] PATCH response:', response.status, response.statusText)
-
         if (!response.ok) {
-          const errorText = await response.text()
-          console.error('[delete] PATCH error body:', errorText)
           throw new Error(`Delete failed: ${response.status}`)
         }
-
-        console.log('[delete] Delete successful, updating local state')
 
         // Show brief success indicator
         statusEl.textContent = '✓ Deleted'
@@ -1437,7 +1426,7 @@ export const longChatPane = {
     }
 
     // Load messages from store
-    async function loadMessages() {
+    async function loadMessages(skipFetch = false) {
       if (isFirstLoad) {
         statusEl.textContent = 'Loading messages...'
         messagesContainer.innerHTML = ''
@@ -1452,9 +1441,11 @@ export const longChatPane = {
         const DCT = ns('http://purl.org/dc/terms/')
         const FOAF = ns('http://xmlns.com/foaf/0.1/')
 
-        // Fetch the document
+        // Fetch the document (skip if refresh already loaded fresh data)
         const doc = subject.doc ? subject.doc() : subject
-        await store.fetcher.load(doc)
+        if (!skipFetch) {
+          await store.fetcher.load(doc)
+        }
 
         // Get chat title from the subject or document
         const chatNode = subject.uri.includes('#') ? subject : $rdf.sym(subject.uri + '#this')
@@ -1537,16 +1528,9 @@ export const longChatPane = {
         const currentUris = new Set(allMessages.map(m => m.uri))
         const deletedUris = [...renderedUris].filter(uri => !currentUris.has(uri))
 
-        console.log('[loadMessages] renderedUris:', [...renderedUris])
-        console.log('[loadMessages] currentUris:', [...currentUris])
-        console.log('[loadMessages] deletedUris:', deletedUris)
-        console.log('[loadMessages] unrenderedMessages:', unrenderedMessages.length)
-
         // Remove deleted messages from UI
         for (const uri of deletedUris) {
-          console.log('[loadMessages] Removing deleted message:', uri)
           const el = messagesContainer.querySelector(`[data-uri="${uri}"]`)
-          console.log('[loadMessages] Found element:', !!el)
           if (el) el.remove()
           renderedUris.delete(uri)
         }
@@ -1742,19 +1726,14 @@ export const longChatPane = {
       const doc = subject.doc ? subject.doc() : subject
       const docUri = doc.uri || doc.value
 
-      console.log('[refresh] Starting refresh for:', docUri)
-
       // Clear existing statements for this document before reloading
-      // This ensures deleted messages are properly removed from the store
       const existingStatements = store.statementsMatching(null, null, null, doc)
-      console.log('[refresh] Clearing', existingStatements.length, 'statements from store')
       existingStatements.forEach(st => store.remove(st))
 
-      // Fetch with cache-busting to bypass browser cache (important for mobile Chrome)
+      // Fetch with cache-busting to bypass browser cache
       const authFetch = context.authFetch ? context.authFetch() : fetch
       const cacheBustUrl = docUri + (docUri.includes('?') ? '&' : '?') + '_t=' + Date.now()
 
-      console.log('[refresh] Fetching:', cacheBustUrl)
       const response = await authFetch(cacheBustUrl, {
         headers: { 'Accept': 'text/turtle, application/ld+json, application/rdf+xml' },
         cache: 'no-store'
@@ -1763,14 +1742,11 @@ export const longChatPane = {
       if (response.ok) {
         const text = await response.text()
         const contentType = response.headers.get('content-type') || 'text/turtle'
-        console.log('[refresh] Got', text.length, 'bytes, parsing as', contentType)
         $rdf.parse(text, store, docUri, contentType)
-      } else {
-        console.error('[refresh] Fetch failed:', response.status, response.statusText)
       }
 
-      await loadMessages()
-      console.log('[refresh] Done, messages:', messages.length)
+      // skipFetch=true because we already loaded fresh data above
+      await loadMessages(true)
     }
 
     // Initial load

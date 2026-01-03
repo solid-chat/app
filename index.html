@@ -571,14 +571,6 @@ let currentPane = null
 async function doRefreshChat() {
   if (!currentChatUri) return
 
-  // Brief visual indicator for debugging (shows refresh is triggered)
-  const statusEl = document.querySelector('.message-status')
-  if (statusEl) {
-    const original = statusEl.textContent
-    statusEl.textContent = '🔄 Syncing...'
-    setTimeout(() => { statusEl.textContent = original }, 1000)
-  }
-
   // Use incremental refresh if pane supports it
   if (currentPane && currentPane.refresh) {
     try {
