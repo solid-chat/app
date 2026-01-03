@@ -128,9 +128,11 @@
 .app-wrapper {
   height: 100vh;
   height: 100dvh; /* Modern browsers: accounts for mobile address bar */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
   display: flex;
   flex-direction: column;
   position: relative;
+  box-sizing: border-box;
 }
 
 .app-banner {
