@@ -1733,11 +1733,7 @@ export const longChatPane = {
 
       console.log('[refresh] Fetching:', cacheBustUrl)
       const response = await authFetch(cacheBustUrl, {
-        headers: {
-          'Accept': 'text/turtle, application/ld+json, application/rdf+xml',
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache'
-        },
+        headers: { 'Accept': 'text/turtle, application/ld+json, application/rdf+xml' },
         cache: 'no-store'
       })
 
