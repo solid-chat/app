@@ -24,7 +24,8 @@ const FLOW = {
   Message: 'http://www.w3.org/2005/01/wf/flow#Message'
 }
 
-const MENTION_RE = /@\{([^}]+)\}/g
+// Matches @{webId} or @https://... (without braces)
+const MENTION_RE = /@\{([^}]+)\}|@(https?:\/\/[^\s]+)/g
 const MENTION_TRIGGER = /@([^\s@{]*)$/
 let mentionIndex = -1
 let mentionMatches = []
@@ -746,7 +747,8 @@ function renderMessageContent(dom, content) {
   const tokens = []
   let lastIndex = 0
 
-  content.replace(MENTION_RE, (match, webId, index) => {
+  content.replace(MENTION_RE, (match, bracedWebId, plainWebId, index) => {
+    const webId = bracedWebId || plainWebId  // Use whichever captured
     if (index > lastIndex) {
       tokens.push({ type: 'text', value: content.slice(lastIndex, index) })
     }
@@ -1824,7 +1826,7 @@ export const longChatPane = {
         const msgId = `#msg-${Date.now()}`
         const msgNode = $rdf.sym(subject.uri + msgId)
         const now = new Date().toISOString()
-        const mentionedWebIds = [...text.matchAll(MENTION_RE)].map(m => m[1])
+        const mentionedWebIds = [...text.matchAll(MENTION_RE)].map(m => m[1] || m[2])
 
         const ins = [
           $rdf.st(subject, FLOW('message'), msgNode, subject.doc()),
