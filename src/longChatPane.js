@@ -730,9 +730,11 @@ function parseMarkdown(text) {
   })
   // Inline code
   html = html.replace(/`([^`]+)`/g, '<code>$1</code>')
-  // Bold
+  // Bold - **text** or *text*
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
   html = html.replace(/\*([^*]+)\*/g, '<strong>$1</strong>')
-  // Italic
+  // Italic - __text__ or _text_
+  html = html.replace(/__([^_]+)__/g, '<em>$1</em>')
   html = html.replace(/_([^_]+)_/g, '<em>$1</em>')
   // Strikethrough
   html = html.replace(/~([^~]+)~/g, '<s>$1</s>')
