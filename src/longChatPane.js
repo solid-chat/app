@@ -730,9 +730,9 @@ function parseMarkdown(text) {
   })
   // Inline code
   html = html.replace(/`([^`]+)`/g, '<code>$1</code>')
-  // Bold - **text** or *text*
-  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-  html = html.replace(/\*([^*]+)\*/g, '<strong>$1</strong>')
+  // Bold - **text** or *text* (also handles fullwidth asterisk ＊)
+  html = html.replace(/[*＊]{2}([^*＊]+)[*＊]{2}/g, '<strong>$1</strong>')
+  html = html.replace(/[*＊]([^*＊]+)[*＊]/g, '<strong>$1</strong>')
   // Italic - __text__ or _text_
   html = html.replace(/__([^_]+)__/g, '<em>$1</em>')
   html = html.replace(/_([^_]+)_/g, '<em>$1</em>')
@@ -861,7 +861,8 @@ async function fetchAvatar(webId, store, $rdf) {
 
   try {
     const profile = $rdf.sym(webId)
-    await store.fetcher.load(profile.doc())
+    const doc = profile.doc()
+    await store.fetcher.load(doc, { headers: { Accept: 'text/turtle, application/ld+json, application/rdf+xml' } })
 
     const ns = $rdf.Namespace
     const FOAF = ns('http://xmlns.com/foaf/0.1/')
@@ -869,7 +870,8 @@ async function fetchAvatar(webId, store, $rdf) {
 
     let avatar = store.any(profile, FOAF('img'))?.value ||
                  store.any(profile, FOAF('depiction'))?.value ||
-                 store.any(profile, VCARD('hasPhoto'))?.value
+                 store.any(profile, VCARD('hasPhoto'))?.value ||
+                 store.any(profile, VCARD('photo'))?.value
 
     // Resolve relative URLs against profile base
     if (avatar && !avatar.startsWith('http')) {
@@ -877,9 +879,11 @@ async function fetchAvatar(webId, store, $rdf) {
       avatar = new URL(avatar, base).href
     }
 
+
     avatarCache.set(webId, avatar)
     return avatar
   } catch (e) {
+    console.warn('Failed to fetch avatar for', webId, e.message || e)
     avatarCache.set(webId, null)
     return null
   }
