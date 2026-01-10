@@ -564,8 +564,11 @@ const styles = `
   border-radius: 16px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
   position: absolute;
-  bottom: -8px;
-  left: 8px;
+  bottom: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  white-space: nowrap;
 }
 
 .message-row:hover .reaction-bar {
@@ -893,6 +896,110 @@ function createMessageElement(dom, message, isOwn, callbacks) {
   row.appendChild(bubble)
 
   return row
+}
+
+// Helper function to ensure year/month/day/chat.ttl exists
+async function ensureDailyChat(subject, store, context) {
+  const $rdf = store.rdflib || globalThis.$rdf
+  
+  // Get the base URL from subject (remove /chat.ttl or #this etc)
+  let baseUrl = subject.uri
+  
+  // Remove fragment
+  if (baseUrl.includes('#')) {
+    baseUrl = baseUrl.split('#')[0]
+  }
+  
+  // Remove trailing /chat.ttl if present
+  if (baseUrl.endsWith('/chat.ttl')) {
+    baseUrl = baseUrl.substring(0, baseUrl.lastIndexOf('/chat.ttl'))
+  } else if (baseUrl.endsWith('/')) {
+    baseUrl = baseUrl.substring(0, baseUrl.length - 1)
+  }
+  
+  // Generate year/month/day path
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  
+  const dailyPath = `${year}/${month}/${day}`
+  const dailyChatUri = `${baseUrl}/${dailyPath}/chat.ttl`
+  const dailyChatDoc = $rdf.sym(dailyChatUri)
+  
+  // Check if daily chat exists
+  try {
+    await store.fetcher.load(dailyChatDoc)
+    console.log('Daily chat exists:', dailyChatUri)
+    return dailyChatDoc
+  } catch (err) {
+    console.log('Daily chat does not exist, creating:', dailyChatUri)
+    
+    // Get authenticated fetch from store fetcher
+    const authFetch = store.fetcher._fetch || window.fetch.bind(window)
+    const ns = $rdf.Namespace
+    const RDF = ns('http://www.w3.org/1999/02/22-rdf-syntax-ns#')
+    const DCT = ns('http://purl.org/dc/terms/')
+    const MEETING = ns('http://www.w3.org/ns/pim/meeting#')
+    const XSD = ns('http://www.w3.org/2001/XMLSchema#')
+    
+    const dateTime = now.toISOString()
+    
+    // Generate turtle content for new chat file
+    const turtle = `@prefix : <#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix dct: <http://purl.org/dc/terms/> .
+@prefix meeting: <http://www.w3.org/ns/pim/meeting#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+<#this>
+    rdf:type meeting:LongChat ;
+    dct:title "Chat ${year}-${month}-${day}" ;
+    dct:created "${dateTime}"^^xsd:dateTime .
+`
+    
+    // Create folders first (year, year/month, year/month/day)
+    const foldersToCreate = [
+      `${baseUrl}/${year}/`,
+      `${baseUrl}/${year}/${month}/`,
+      `${baseUrl}/${year}/${month}/${day}/`
+    ]
+    
+    for (const folderUri of foldersToCreate) {
+      try {
+        await authFetch(folderUri, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'text/turtle',
+            'Link': '<http://www.w3.org/ns/ldp#BasicContainer>; rel="type"'
+          },
+          body: ''
+        })
+      } catch (e) {
+        // Folder might already exist, continue
+        console.log('Folder creation (might already exist):', folderUri)
+      }
+    }
+    
+    // Create the chat.ttl file
+    const response = await authFetch(dailyChatUri, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'text/turtle'
+      },
+      body: turtle
+    })
+    
+    if (!response.ok) {
+      throw new Error(`Failed to create daily chat: ${response.status} ${response.statusText}`)
+    }
+    
+    // Load it into the store
+    await store.fetcher.load(dailyChatDoc, { force: true })
+    
+    console.log('Created daily chat:', dailyChatUri)
+    return dailyChatDoc
+  }
 }
 
 // Main pane definition
@@ -1443,17 +1550,23 @@ export const longChatPane = {
         const FOAF = ns('http://xmlns.com/foaf/0.1/')
 
         // Fetch the document (skip if refresh already loaded fresh data)
-        const doc = subject.doc ? subject.doc() : subject
+        /* const doc = subject.doc ? subject.doc() : subject
         if (!skipFetch) {
           await store.fetcher.load(doc)
-        }
+        } */
+
+        // Get today's daily chat document
+        const dailyDoc = await ensureDailyChat(subject, store, context)
+        
+        // Fetch the daily document
+        await store.fetcher.load(dailyDoc, { force: true })
 
         // Get chat title from the subject or document
         const chatNode = subject.uri.includes('#') ? subject : $rdf.sym(subject.uri + '#this')
-        const title = store.any(chatNode, DCT('title'), null, doc)?.value ||
-                     store.any(chatNode, DC('title'), null, doc)?.value ||
-                     store.any(subject, DCT('title'), null, doc)?.value ||
-                     store.any(null, DCT('title'), null, doc)?.value
+        const title = store.any(chatNode, DCT('title'), null, dailyDoc)?.value ||
+                     store.any(chatNode, DC('title'), null, dailyDoc)?.value ||
+                     store.any(subject, DCT('title'), null, dailyDoc)?.value ||
+                     store.any(null, DCT('title'), null, dailyDoc)?.value
         if (title) {
           // Show title with URI as subtitle
           nameEl.textContent = title
@@ -1461,7 +1574,7 @@ export const longChatPane = {
         }
 
         // Extract all messages with sioc:content from this document
-        const contentStatements = store.statementsMatching(null, SIOC('content'), null, doc)
+        const contentStatements = store.statementsMatching(null, SIOC('content'), null, dailyDoc)
         const newMessages = []
 
         for (const st of contentStatements) {
@@ -1470,13 +1583,13 @@ export const longChatPane = {
 
           if (!content) continue
 
-          const date = store.any(msgNode, DCT('created'), null, doc)?.value ||
-                      store.any(msgNode, DC('created'), null, doc)?.value ||
-                      store.any(msgNode, DC('date'), null, doc)?.value
+          const date = store.any(msgNode, DCT('created'), null, dailyDoc)?.value ||
+                      store.any(msgNode, DC('created'), null, dailyDoc)?.value ||
+                      store.any(msgNode, DC('date'), null, dailyDoc)?.value
 
-          const maker = store.any(msgNode, FOAF('maker'), null, doc) ||
-                       store.any(msgNode, DC('author'), null, doc) ||
-                       store.any(msgNode, DCT('creator'), null, doc)
+          const maker = store.any(msgNode, FOAF('maker'), null, dailyDoc) ||
+                       store.any(msgNode, DC('author'), null, dailyDoc) ||
+                       store.any(msgNode, DCT('creator'), null, dailyDoc)
 
           let authorName = null
           if (maker) {
@@ -1503,12 +1616,12 @@ export const longChatPane = {
 
         // Load reactions for messages
         const SCHEMA = ns('http://schema.org/')
-        const reactionStatements = store.statementsMatching(null, SCHEMA('about'), null, doc)
+        const reactionStatements = store.statementsMatching(null, SCHEMA('about'), null, dailyDoc)
         for (const st of reactionStatements) {
           const reactionNode = st.subject
           const aboutMsg = st.object.value
-          const emoji = store.any(reactionNode, SCHEMA('name'), null, doc)?.value
-          const agent = store.any(reactionNode, SCHEMA('agent'), null, doc)?.value
+          const emoji = store.any(reactionNode, SCHEMA('name'), null, dailyDoc)?.value
+          const agent = store.any(reactionNode, SCHEMA('agent'), null, dailyDoc)?.value
 
           if (emoji && agent) {
             const msg = allMessages.find(m => m.uri === aboutMsg)
@@ -1639,19 +1752,22 @@ export const longChatPane = {
         const FOAF = ns('http://xmlns.com/foaf/0.1/')
         const RDF = ns('http://www.w3.org/1999/02/22-rdf-syntax-ns#')
 
+        // Determine target document - check for year/month/day structure
+        const targetDoc = await ensureDailyChat(subject, store, context)
+
         const msgId = `#msg-${Date.now()}`
-        const msgNode = $rdf.sym(subject.uri + msgId)
+        const msgNode = $rdf.sym(targetDoc.uri + msgId)
         const now = new Date().toISOString()
 
         const ins = [
-          $rdf.st(subject, FLOW('message'), msgNode, subject.doc()),
-          $rdf.st(msgNode, RDF('type'), FLOW('Message'), subject.doc()),
-          $rdf.st(msgNode, SIOC('content'), text, subject.doc()),
-          $rdf.st(msgNode, DCT('created'), $rdf.lit(now, null, $rdf.sym('http://www.w3.org/2001/XMLSchema#dateTime')), subject.doc())
+          $rdf.st(subject, FLOW('message'), msgNode, targetDoc.doc()),
+          $rdf.st(msgNode, RDF('type'), FLOW('Message'), targetDoc.doc()),
+          $rdf.st(msgNode, SIOC('content'), text, targetDoc.doc()),
+          $rdf.st(msgNode, DCT('created'), $rdf.lit(now, null, $rdf.sym('http://www.w3.org/2001/XMLSchema#dateTime')), targetDoc.doc())
         ]
 
         if (currentUser) {
-          ins.push($rdf.st(msgNode, FOAF('maker'), $rdf.sym(currentUser), subject.doc()))
+          ins.push($rdf.st(msgNode, FOAF('maker'), $rdf.sym(currentUser), targetDoc.doc()))
         }
 
         await store.updater.update([], ins)
