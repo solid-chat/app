@@ -685,11 +685,16 @@ async function getMyPodRoot() {
     }
 
     // Fallback: derive from WebID (e.g., https://user.pod/profile/card#me -> https://user.pod/)
+    // LIMITATION: This assumes pod is at origin root, which is not always true.
+    // Some servers host multiple pods: https://server.com/alice/, https://server.com/bob/
+    // Proper solution: GET request with Link header rel="http://www.w3.org/ns/solid/terms#storageDescription"
+    // pointing to /.well-known/solid which contains the storage root.
     const url = new URL(currentWebId)
     return `${url.protocol}//${url.host}/`
   } catch (e) {
     console.warn('Failed to get pod root:', e)
     // Fallback
+    // LIMITATION: This assumes pod is at origin root, which is not always true.
     const url = new URL(currentWebId)
     return `${url.protocol}//${url.host}/`
   }
@@ -697,6 +702,31 @@ async function getMyPodRoot() {
 
 // Create a new chat room
 async function createChat(chatUrl, title) {
+  // Validate chat URL - reject pod root, suggest proper paths
+  const podRoot = await getMyPodRoot()
+  if (podRoot) {
+    // Parse the chat URL
+    const chatUrlObj = new URL(chatUrl)
+    const podRootObj = new URL(podRoot)
+    
+    // Check if chat is at pod root (no path or just /chat.ttl)
+    // LIMITATION: Assumes pod root detection is accurate. May not work correctly
+    // for multi-tenant servers where pods are at paths like /alice/, /bob/
+    if (chatUrlObj.origin === podRootObj.origin) {
+      const path = chatUrlObj.pathname
+      const isAtRoot = path === '/chat.ttl' || path === '/'
+      
+      if (isAtRoot) {
+        throw new Error(
+          'Cannot create chat at pod root.\n\n' +
+          'Suggested paths:\n' +
+          '  • Public: ' + podRoot + 'public/global/chat.ttl\n' +
+          '  • Private: ' + podRoot + 'private/chats/my-chat/chat.ttl'
+        )
+      }
+    }
+  }
+  
   // Default title from filename
   if (!title) {
     const filename = chatUrl.split('/').pop().replace('.ttl', '')
