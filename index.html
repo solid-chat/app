@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Solid Chat</title>
   <meta name="description" content="Modern, decentralized chat app for Solid pods. Your messages, your control.">
 
@@ -28,241 +28,140 @@
   <link rel="manifest" href="manifest.json">
 
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <style>
-    :root {
-      --gradient-start: #667eea;
-      --gradient-end: #9f7aea;
-      --bg: #f7f8fc;
-      --text: #2d3748;
-      --text-muted: #a0aec0;
-      --accent: #805ad5;
-    }
 
+  <!-- Theme CSS - loaded dynamically -->
+  <link id="theme-css" rel="stylesheet" href="themes/wave.css">
+
+  <style>
+    /* Base styles that don't change between themes */
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background: var(--bg);
       color: var(--text);
-      min-height: 100vh;
-    }
-
-    .app-header {
-      background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
-      color: white;
-      padding: 16px 24px;
-      box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);
-      display: flex;
-      align-items: center;
-      gap: 16px;
-    }
-
-    .app-header h1 {
-      font-size: 1.25rem;
-      font-weight: 600;
-      margin-bottom: 2px;
-    }
-
-    .app-header p {
-      font-size: 0.8rem;
-      opacity: 0.9;
-    }
-
-    .app-header button {
-      padding: 6px 14px;
-      background: rgba(255,255,255,0.2);
-      color: white;
-      border: 1px solid rgba(255,255,255,0.3);
-      border-radius: 6px;
-      font-size: 12px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-
-    .app-header button:hover {
-      background: rgba(255,255,255,0.3);
-    }
-
-    .app-header input {
-      padding: 6px 10px;
-      border: 1px solid rgba(255,255,255,0.3);
-      border-radius: 6px;
-      font-size: 12px;
-      background: rgba(255,255,255,0.15);
-      color: white;
-      width: 140px;
-    }
-
-    .app-header input::placeholder {
-      color: rgba(255,255,255,0.7);
-    }
-
-    #chatContainer {
-      background: white;
+      height: 100vh;
       overflow: hidden;
-      height: 100%;
-    }
-
-    .placeholder {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100%;
-      color: var(--text-muted);
-      text-align: center;
-    }
-
-    .placeholder-icon {
-      font-size: 64px;
-      margin-bottom: 16px;
-    }
-
-    .placeholder h2 {
-      color: var(--text);
-      margin-bottom: 8px;
-    }
-
-    .loading-spinner {
-      width: 40px;
-      height: 40px;
-      border: 3px solid #e0e0e0;
-      border-top-color: var(--primary);
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-      margin-bottom: 16px;
-    }
-
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-
-    .error {
-      background: #fff3f3;
-      border: 1px solid #ffcdd2;
-      color: #c62828;
-      padding: 16px;
-      border-radius: 8px;
-      margin-top: 16px;
-    }
-
-    /* App layout with sidebar */
-    .app-layout {
-      display: flex;
-      height: calc(100vh - 68px);
-    }
-
-    .sidebar {
-      width: 320px;
-      flex-shrink: 0;
-      height: 100%;
-      overflow: hidden;
-    }
-
-    .main-content {
-      flex: 1;
-      overflow: hidden;
-      background: var(--bg);
-      height: 100%;
-    }
-
-    /* Mobile hamburger */
-    .mobile-menu-btn {
-      display: none;
-      width: 40px;
-      height: 40px;
-      background: rgba(255,255,255,0.2);
-      border: none;
-      border-radius: 8px;
-      color: white;
-      font-size: 24px;
-      cursor: pointer;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .sidebar-overlay {
-      display: none;
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0,0,0,0.5);
-      z-index: 99;
-    }
-
-    @media (max-width: 768px) {
-      .mobile-menu-btn {
-        display: flex;
-      }
-
-      .sidebar {
-        position: fixed;
-        top: 0;
-        left: -320px;
-        height: 100vh;
-        z-index: 100;
-        transition: left 0.3s ease;
-        box-shadow: 4px 0 20px rgba(0,0,0,0.2);
-      }
-
-      .sidebar.open {
-        left: 0;
-      }
-
-      .sidebar-overlay.open {
-        display: block;
-      }
-
-      .app-layout {
-        height: calc(100vh - 68px);
-      }
-
-      .main-content {
-        width: 100%;
-      }
     }
   </style>
 </head>
 <body>
 
-<header class="app-header">
-  <button class="mobile-menu-btn" id="mobileMenuBtn">☰</button>
-  <div>
-    <h1>Solid Chat</h1>
-    <p>Decentralized messaging for the web</p>
-  </div>
-  <div id="headerLoginArea" style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
-    <span id="userStatus" style="font-size: 13px; opacity: 0.9;">Loading...</span>
-    <span id="loginArea"></span>
-  </div>
-</header>
-
-<div class="sidebar-overlay" id="sidebarOverlay"></div>
-
-<div class="app-layout">
-  <aside class="sidebar" id="sidebar"></aside>
-
-  <main class="main-content">
-    <div id="chatContainer">
-      <div class="placeholder" id="placeholder">
-        <div class="placeholder-icon">💬</div>
-        <h2>Welcome to Solid Chat</h2>
-        <p>Select a chat from the sidebar<br>or add a new one with the + button.</p>
-      </div>
+<div class="app-wrapper">
+  <div class="app-banner">
+    <div class="brand">
+      <h1>Solid Chat</h1>
+      <p>Decentralized messaging</p>
     </div>
-  </main>
+  </div>
+
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+  <div class="app-container">
+    <!-- Left Panel - Chat List -->
+    <aside class="left-panel" id="leftPanel">
+      <div class="panel-header">
+        <div class="header-left">
+          <div class="user-avatar" id="userAvatar">S</div>
+          <div>
+            <div class="header-title">Solid Chat <span class="header-version" id="appVersion"></span></div>
+          </div>
+        </div>
+        <div class="header-actions">
+        </div>
+      </div>
+
+      <div class="sidebar" id="sidebar"></div>
+
+      <div class="sidebar-footer">
+        <select id="sidebarThemeSelect" class="sidebar-theme-select" title="Switch theme">
+          <option value="solid">Solid</option>
+          <option value="wave">Wave</option>
+          <option value="telegram">Telegram</option>
+          <option value="signal">Signal</option>
+        </select>
+      </div>
+    </aside>
+
+    <!-- Right Panel - Chat -->
+    <main class="right-panel">
+      <div class="content-header">
+        <div class="header-left">
+          <button class="mobile-menu-btn" id="mobileMenuBtn">☰</button>
+          <span id="userStatus" class="user-status">Loading...</span>
+        </div>
+        <div class="header-right" id="headerLoginArea">
+          <span id="loginArea"></span>
+        </div>
+      </div>
+
+      <div class="chat-area">
+        <div id="chatContainer">
+          <div class="placeholder" id="placeholder">
+            <div class="placeholder-icon">💬</div>
+            <h2>Welcome to Solid Chat</h2>
+            <p>Send and receive messages from your Solid POD.<br>Your data stays with you, always.<br><br>Select a chat from the sidebar or add a new one.</p>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<div class="status-badge" id="statusBadge">
+  <div class="status-dot"></div>
+  <span>Connected</span>
 </div>
 
 <!-- Load rdflib and Solid auth -->
-<script src="https://cdn.jsdelivr.net/npm/rdflib@2.2.33/dist/rdflib.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/rdflib@2.3.5/dist/rdflib.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@inrupt/solid-client-authn-browser@2.2.6/dist/solid-client-authn.bundle.js"></script>
 
 <script type="module">
 import { longChatPane } from './src/longChatPane.js'
-import { chatListPane, addChat, updateChatPreview } from './src/chatListPane.js'
+import { chatListPane, addChat, updateChatPreview, incrementUnread, resetUnread } from './src/chatListPane.js'
+
+// Theme management
+const THEMES = {
+  wave: { name: 'Wave', file: 'themes/wave.css' },
+  solid: { name: 'Solid', file: 'themes/solid.css' },
+  telegram: { name: 'Telegram', file: 'themes/telegram.css' },
+  signal: { name: 'Signal', file: 'themes/signal.css' }
+}
+
+function loadTheme(themeName) {
+  const theme = THEMES[themeName] || THEMES.wave
+  const themeLink = document.getElementById('theme-css')
+  themeLink.href = theme.file
+  localStorage.setItem('solidchat-theme', themeName)
+
+  // Update sidebar select
+  const sidebarSelect = document.getElementById('sidebarThemeSelect')
+  if (sidebarSelect) sidebarSelect.value = themeName
+
+  // Update title based on theme
+  const titles = { wave: 'Wave', solid: 'Solid Chat', telegram: 'Telegram', signal: 'Signal' }
+  document.title = titles[themeName] || 'Solid Chat'
+  document.querySelector('.header-title').innerHTML = `${titles[themeName]} <span class="header-version" id="appVersion"></span>`
+
+  // Reload version
+  fetch('./package.json')
+    .then(r => r.json())
+    .then(pkg => {
+      const el = document.getElementById('appVersion')
+      if (el) el.textContent = `v${pkg.version}`
+    })
+    .catch(() => {})
+}
+
+function initTheme() {
+  const saved = localStorage.getItem('solidchat-theme') || 'solid'
+  loadTheme(saved)
+
+  document.getElementById('sidebarThemeSelect').addEventListener('change', (e) => {
+    loadTheme(e.target.value)
+  })
+}
 
 // Wait for libraries to be available
 async function waitForLibraries() {
@@ -287,17 +186,19 @@ const placeholder = document.getElementById('placeholder')
 const userStatus = document.getElementById('userStatus')
 const loginArea = document.getElementById('loginArea')
 const sidebar = document.getElementById('sidebar')
+const leftPanel = document.getElementById('leftPanel')
 const mobileMenuBtn = document.getElementById('mobileMenuBtn')
 const sidebarOverlay = document.getElementById('sidebarOverlay')
+const statusBadge = document.getElementById('statusBadge')
 
 // Mobile menu toggle
 mobileMenuBtn.addEventListener('click', () => {
-  sidebar.classList.toggle('open')
+  leftPanel.classList.toggle('open')
   sidebarOverlay.classList.toggle('open')
 })
 
 sidebarOverlay.addEventListener('click', () => {
-  sidebar.classList.remove('open')
+  leftPanel.classList.remove('open')
   sidebarOverlay.classList.remove('open')
 })
 
@@ -315,28 +216,38 @@ async function handleAuthRedirect() {
 
     if (currentSession.info.isLoggedIn) {
       currentWebId = currentSession.info.webId
-      updateAuthUI(true)
+      await updateAuthUI(true)
     } else {
-      updateAuthUI(false)
+      await updateAuthUI(false)
     }
   } catch (err) {
     console.error('Auth redirect error:', err)
-    updateAuthUI(false)
+    await updateAuthUI(false)
   }
 }
 
 // Update UI based on auth state
-function updateAuthUI(isLoggedIn) {
+async function updateAuthUI(isLoggedIn) {
   if (isLoggedIn && currentWebId) {
     const shortId = currentWebId.split('//')[1]?.split('/')[0] || currentWebId
-    userStatus.innerHTML = `Logged in as <strong><a href="${currentWebId}" target="_blank" style="color: white; text-decoration: underline; text-underline-offset: 2px;">${shortId}</a></strong>`
-    loginArea.innerHTML = `<button id="logoutBtn">Logout</button>`
+    userStatus.innerHTML = `Logged in as <a href="${currentWebId}" target="_blank">${shortId}</a>`
+    loginArea.innerHTML = `<button class="btn btn-secondary" id="logoutBtn">Logout</button>`
     document.getElementById('logoutBtn').addEventListener('click', handleLogout)
+
+    // Update avatar with user initial
+    const initial = shortId.charAt(0).toUpperCase()
+    document.getElementById('userAvatar').textContent = initial
+
+    // Add Saved Messages to chat list (pinned at top)
+    const savedMessagesUrl = await ensureSavedMessagesChat()
+    if (savedMessagesUrl) {
+      addChat(savedMessagesUrl, '📌 Saved Messages', 'Private notes to yourself')
+    }
   } else {
     userStatus.textContent = 'Not logged in'
     loginArea.innerHTML = `
-      <input type="text" id="idpInput" placeholder="solidcommunity.net" style="padding: 8px 12px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 13px; width: 160px;">
-      <button id="loginBtn">Login</button>
+      <input type="text" class="input-field" id="idpInput" placeholder="e.g. solidweb.org">
+      <button class="btn btn-primary" id="loginBtn">Login</button>
     `
     document.getElementById('loginBtn').addEventListener('click', handleLogin)
     document.getElementById('idpInput').addEventListener('keydown', (e) => {
@@ -348,7 +259,7 @@ function updateAuthUI(isLoggedIn) {
 // Handle login
 async function handleLogin() {
   const idpInput = document.getElementById('idpInput')
-  let idp = idpInput.value.trim() || 'solidcommunity.net'
+  let idp = idpInput.value.trim() || 'solidweb.org'
 
   // Add https if missing
   if (!idp.startsWith('http')) {
@@ -375,7 +286,7 @@ async function handleLogout() {
     await logout()
     currentSession = null
     currentWebId = null
-    updateAuthUI(false)
+    await updateAuthUI(false)
   } catch (err) {
     console.error('Logout error:', err)
   }
@@ -456,7 +367,8 @@ function createContext(uri) {
           currentUser: () => user
         }
       }
-    }
+    },
+    authFetch: getAuthFetch
   }
 }
 
@@ -464,6 +376,52 @@ function createContext(uri) {
 let currentWebSocket = null
 let currentChatUri = null
 let reconnectTimeout = null
+
+// Notification sound
+let soundEnabled = localStorage.getItem('solidchat-sound') !== 'false'
+
+function playNotificationSound() {
+  if (!soundEnabled) return
+
+  const ctx = new AudioContext()
+
+  // First tone (D5)
+  const osc1 = ctx.createOscillator()
+  const gain1 = ctx.createGain()
+  osc1.connect(gain1)
+  gain1.connect(ctx.destination)
+  osc1.frequency.value = 587.33
+  gain1.gain.setValueAtTime(0.2, ctx.currentTime)
+  gain1.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2)
+  osc1.start()
+  osc1.stop(ctx.currentTime + 0.2)
+
+  // Second tone (A5)
+  const osc2 = ctx.createOscillator()
+  const gain2 = ctx.createGain()
+  osc2.connect(gain2)
+  gain2.connect(ctx.destination)
+  osc2.frequency.value = 880
+  gain2.gain.setValueAtTime(0.2, ctx.currentTime + 0.15)
+  gain2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4)
+  osc2.start(ctx.currentTime + 0.15)
+  osc2.stop(ctx.currentTime + 0.4)
+}
+
+function toggleSound() {
+  soundEnabled = !soundEnabled
+  localStorage.setItem('solidchat-sound', soundEnabled)
+  updateSoundButton()
+}
+
+function updateSoundButton() {
+  const btn = document.getElementById('soundToggle')
+  if (btn) {
+    btn.innerHTML = soundEnabled
+      ? '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>'
+      : '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/><line x1="3" y1="3" x2="21" y2="21" stroke="currentColor" stroke-width="2"/></svg>'
+  }
+}
 
 // Subscribe to real-time updates for a resource
 async function subscribeToUpdates(uri) {
@@ -536,7 +494,11 @@ async function subscribeWebSocketChannel2023(uri, authFetch) {
     currentWebSocket.onmessage = (event) => {
       console.log('WebSocketChannel2023 notification:', event.data)
       // Any message means the resource changed
-      setTimeout(() => refreshChat(), 500)
+      playNotificationSound()
+      if (document.hidden) {
+        incrementUnread(uri)
+      }
+      setTimeout(() => refreshChat(), 1500)
     }
 
     currentWebSocket.onclose = () => {
@@ -572,7 +534,11 @@ function connectLegacyWebSocket(updatesVia, uri) {
       const updatedUri = data.slice(4).trim()
       if (updatedUri === uri || uri.startsWith(updatedUri)) {
         console.log('Chat updated, refreshing...')
-        setTimeout(() => refreshChat(), 500)
+        playNotificationSound()
+        if (document.hidden) {
+          incrementUnread(uri)
+        }
+        setTimeout(() => refreshChat(), 1500)
       }
     }
   }
@@ -589,28 +555,52 @@ function connectLegacyWebSocket(updatesVia, uri) {
   }
 }
 
+// Debounce helper
+function debounce(fn, delay) {
+  let timeout
+  return function(...args) {
+    clearTimeout(timeout)
+    timeout = setTimeout(() => fn.apply(this, args), delay)
+  }
+}
+
+// Current pane element (for incremental refresh)
+let currentPane = null
+
 // Refresh current chat without full reload
-async function refreshChat() {
+async function doRefreshChat() {
   if (!currentChatUri) return
 
+  // Use incremental refresh if pane supports it
+  if (currentPane && currentPane.refresh) {
+    try {
+      await currentPane.refresh()
+    } catch (err) {
+      console.error('Error refreshing chat:', err)
+    }
+    return
+  }
+
+  // Fallback to full re-render
   const uri = currentChatUri
   try {
-    // Clear the store cache for this document
     const doc = $rdf.sym(uri).doc()
     store.removeMatches(null, null, null, doc)
 
     const subject = $rdf.sym(uri)
     const context = createContext(uri)
 
-    // Re-render the pane
     chatContainer.innerHTML = ''
-    const element = longChatPane.render(subject, context)
-    chatContainer.appendChild(element)
+    currentPane = longChatPane.render(subject, context)
+    chatContainer.appendChild(currentPane)
 
   } catch (err) {
     console.error('Error refreshing chat:', err)
   }
 }
+
+// Debounced version - prevents rapid re-renders
+const refreshChat = debounce(doRefreshChat, 300)
 
 // Load chat function
 async function loadChat(uri) {
@@ -625,7 +615,7 @@ async function loadChat(uri) {
   }
 
   // Close mobile sidebar if open
-  sidebar.classList.remove('open')
+  leftPanel.classList.remove('open')
   sidebarOverlay.classList.remove('open')
 
   chatContainer.innerHTML = `
@@ -641,6 +631,7 @@ async function loadChat(uri) {
 
     // Clear container and render pane
     chatContainer.innerHTML = ''
+    currentPane = null
 
     // Check if pane applies
     const label = longChatPane.label(subject, context)
@@ -649,8 +640,8 @@ async function loadChat(uri) {
       console.log('Pane label returned null, but rendering anyway for demo')
     }
 
-    const element = longChatPane.render(subject, context)
-    chatContainer.appendChild(element)
+    currentPane = longChatPane.render(subject, context)
+    chatContainer.appendChild(currentPane)
 
     // Add to chat list (will also set as active)
     addChat(uri)
@@ -659,6 +650,9 @@ async function loadChat(uri) {
     // Subscribe to real-time updates
     currentChatUri = uri
     subscribeToUpdates(uri)
+
+    // Remember current chat for page refresh
+    localStorage.setItem('solidchat-current-room', uri)
 
   } catch (err) {
     console.error('Error loading chat:', err)
@@ -673,10 +667,365 @@ async function loadChat(uri) {
 }
 
 // Default global chat
-const DEFAULT_CHAT_URI = 'https://solid-chat.solidcommunity.net/public/global/chat.ttl'
+const DEFAULT_CHAT_URI = 'https://solid-chat.solidweb.org/public/global/chat.ttl'
+
+// Get user's pod root from WebID
+async function getMyPodRoot() {
+  if (!currentWebId) return null
+
+  try {
+    const profileDoc = $rdf.sym(currentWebId).doc()
+    await store.fetcher.load(profileDoc)
+
+    const PIM = $rdf.Namespace('http://www.w3.org/ns/pim/space#')
+    const storage = store.any($rdf.sym(currentWebId), PIM('storage'))
+
+    if (storage) {
+      return storage.value
+    }
+
+    // Fallback: derive from WebID (e.g., https://user.pod/profile/card#me -> https://user.pod/)
+    const url = new URL(currentWebId)
+    return `${url.protocol}//${url.host}/`
+  } catch (e) {
+    console.warn('Failed to get pod root:', e)
+    // Fallback
+    const url = new URL(currentWebId)
+    return `${url.protocol}//${url.host}/`
+  }
+}
+
+// Create a new chat room
+async function createChat(chatUrl, title) {
+  // Default title from filename
+  if (!title) {
+    const filename = chatUrl.split('/').pop().replace('.ttl', '')
+    title = filename
+      .replace(/[-_]/g, ' ')
+      .replace(/\b\w/g, c => c.toUpperCase())
+  }
+
+  const now = new Date().toISOString()
+  const turtle = `@prefix dct: <http://purl.org/dc/terms/>.
+@prefix meeting: <http://www.w3.org/ns/pim/meeting#>.
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#>.
+
+<>
+    a meeting:LongChat ;
+    dct:title "${title}" ;
+    dct:created "${now}"^^xsd:dateTime .
+`
+
+  const authFetch = getAuthFetch()
+  const response = await authFetch(chatUrl, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'text/turtle' },
+    body: turtle
+  })
+
+  if (!response.ok) {
+    throw new Error(`Failed to create chat: ${response.status}`)
+  }
+
+  // Set public ACL and register in Type Index
+  const isPublic = chatUrl.includes('/public/')
+  if (isPublic) {
+    await setPublicReadACL(chatUrl)
+  }
+
+  // Register in Type Index (don't await - do it in background)
+  registerInTypeIndex(chatUrl, isPublic).catch(e => {
+    console.warn('Type Index registration failed:', e)
+  })
+
+  return { url: chatUrl, title }
+}
+
+// Set public read ACL for a resource
+async function setPublicReadACL(resourceUrl) {
+  const aclUrl = resourceUrl + '.acl'
+  const authFetch = getAuthFetch()
+
+  const acl = `@prefix acl: <http://www.w3.org/ns/auth/acl#>.
+@prefix foaf: <http://xmlns.com/foaf/0.1/>.
+
+<#public>
+    a acl:Authorization ;
+    acl:agentClass foaf:Agent ;
+    acl:accessTo <${resourceUrl}> ;
+    acl:mode acl:Read, acl:Append .
+
+<#owner>
+    a acl:Authorization ;
+    acl:agent <${currentWebId}> ;
+    acl:accessTo <${resourceUrl}> ;
+    acl:mode acl:Read, acl:Write, acl:Control .
+`
+
+  try {
+    await authFetch(aclUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'text/turtle' },
+      body: acl
+    })
+  } catch (e) {
+    console.warn('Failed to set ACL (might already exist):', e)
+  }
+}
+
+// Set private ACL (owner-only) for Saved Messages
+async function setPrivateACL(resourceUrl) {
+  const aclUrl = resourceUrl + '.acl'
+  const authFetch = getAuthFetch()
+
+  const acl = `@prefix acl: <http://www.w3.org/ns/auth/acl#>.
+
+<#owner>
+    a acl:Authorization ;
+    acl:agent <${currentWebId}> ;
+    acl:accessTo <${resourceUrl}> ;
+    acl:mode acl:Read, acl:Write, acl:Control .
+`
+
+  try {
+    await authFetch(aclUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'text/turtle' },
+      body: acl
+    })
+  } catch (e) {
+    console.warn('Failed to set private ACL:', e)
+  }
+}
+
+// Get URI for Saved Messages chat
+function getSavedMessagesUri(podRoot) {
+  return podRoot + 'private/saved-messages/chat.ttl'
+}
+
+// Ensure Saved Messages chat exists, create if not
+async function ensureSavedMessagesChat() {
+  if (!currentWebId) return null
+
+  const podRoot = await getMyPodRoot()
+  if (!podRoot) return null
+
+  const chatUrl = getSavedMessagesUri(podRoot)
+  const authFetch = getAuthFetch()
+
+  // Check if chat already exists
+  try {
+    const response = await authFetch(chatUrl, { method: 'HEAD' })
+    if (response.ok) {
+      return chatUrl // Already exists
+    }
+  } catch (e) {
+    // Doesn't exist, create it
+  }
+
+  // Create the chat
+  const now = new Date().toISOString()
+  const turtle = `@prefix dct: <http://purl.org/dc/terms/>.
+@prefix meeting: <http://www.w3.org/ns/pim/meeting#>.
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#>.
+
+<>
+    a meeting:LongChat ;
+    dct:title "Saved Messages" ;
+    dct:created "${now}"^^xsd:dateTime .
+`
+
+  try {
+    const response = await authFetch(chatUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'text/turtle' },
+      body: turtle
+    })
+
+    if (response.ok) {
+      // Set private ACL
+      await setPrivateACL(chatUrl)
+      console.log('Created Saved Messages chat:', chatUrl)
+      return chatUrl
+    }
+  } catch (e) {
+    console.warn('Failed to create Saved Messages chat:', e)
+  }
+
+  return null
+}
+
+// Register chat in user's Type Index
+async function registerInTypeIndex(chatUrl, isPublic = true) {
+  if (!currentWebId) return
+
+  try {
+    // Load profile to find Type Index
+    const profileDoc = $rdf.sym(currentWebId).doc()
+    await store.fetcher.load(profileDoc)
+
+    const SOLID = $rdf.Namespace('http://www.w3.org/ns/solid/terms#')
+    const typeIndexPred = isPublic ? SOLID('publicTypeIndex') : SOLID('privateTypeIndex')
+    const typeIndex = store.any($rdf.sym(currentWebId), typeIndexPred)
+
+    if (!typeIndex) {
+      console.warn('No Type Index found for user')
+      return
+    }
+
+    // Check if already registered
+    await store.fetcher.load(typeIndex)
+    const MEETING = $rdf.Namespace('http://www.w3.org/ns/pim/meeting#')
+    const existing = store.statementsMatching(null, SOLID('instance'), $rdf.sym(chatUrl), typeIndex.doc())
+    if (existing.length > 0) {
+      console.log('Chat already registered in Type Index')
+      return
+    }
+
+    // Add registration
+    const regId = `#chat-${Date.now()}`
+    const insertQuery = `
+      INSERT DATA {
+        <${regId}> a <http://www.w3.org/ns/solid/terms#TypeRegistration> ;
+          <http://www.w3.org/ns/solid/terms#forClass> <http://www.w3.org/ns/pim/meeting#LongChat> ;
+          <http://www.w3.org/ns/solid/terms#instance> <${chatUrl}> .
+      }
+    `
+
+    const authFetch = getAuthFetch()
+    const response = await authFetch(typeIndex.value, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/sparql-update' },
+      body: insertQuery
+    })
+
+    if (response.ok) {
+      console.log('Chat registered in Type Index:', chatUrl)
+    } else {
+      console.warn('Failed to register in Type Index:', response.status)
+    }
+  } catch (e) {
+    console.warn('Failed to register in Type Index:', e)
+  }
+}
+
+// Handle deep link from URL params
+async function handleDeepLink() {
+  const params = new URLSearchParams(window.location.search)
+  const chatUrl = params.get('chat')
+  const title = params.get('title')
+
+  if (!chatUrl) return null
+
+  // Validate URL
+  try {
+    new URL(chatUrl)
+  } catch {
+    console.error('Invalid chat URL:', chatUrl)
+    return null
+  }
+
+  const authFetch = getAuthFetch()
+
+  try {
+    // Check if chat exists
+    const res = await authFetch(chatUrl, { method: 'HEAD' })
+
+    if (res.ok) {
+      // Exists - just return URL to load
+      // Clean URL
+      history.replaceState({}, '', window.location.pathname)
+      return chatUrl
+    } else if (res.status === 404) {
+      // Doesn't exist - try to create if it's on our pod
+      const myPod = await getMyPodRoot()
+      if (myPod && chatUrl.startsWith(myPod)) {
+        await createChat(chatUrl, title)
+        // Clean URL
+        history.replaceState({}, '', window.location.pathname)
+        return chatUrl
+      } else {
+        alert('Chat not found. You can only create chats on your own pod.')
+        history.replaceState({}, '', window.location.pathname)
+        return null
+      }
+    } else if (res.status === 401 || res.status === 403) {
+      // Need to login or no access
+      alert('Login required or no access to this chat.')
+      history.replaceState({}, '', window.location.pathname)
+      return null
+    }
+  } catch (e) {
+    console.error('Error handling deep link:', e)
+  }
+
+  return null
+}
+
+// Copy share link to clipboard
+function copyShareLink(uri) {
+  const shareUrl = `${window.location.origin}${window.location.pathname}?chat=${encodeURIComponent(uri)}`
+  navigator.clipboard.writeText(shareUrl).then(() => {
+    // Show toast
+    showToast('Link copied to clipboard!')
+  }).catch(err => {
+    console.error('Failed to copy:', err)
+    // Fallback: show URL in alert
+    prompt('Copy this link:', shareUrl)
+  })
+}
+
+// Toast notification
+function showToast(message) {
+  const existing = document.querySelector('.toast')
+  if (existing) existing.remove()
+
+  const toast = document.createElement('div')
+  toast.className = 'toast'
+  toast.textContent = message
+  document.body.appendChild(toast)
+
+  setTimeout(() => {
+    toast.style.opacity = '0'
+    toast.style.transition = 'opacity 0.3s'
+    setTimeout(() => toast.remove(), 300)
+  }, 2500)
+}
+
+// Make createChat and copyShareLink available globally for chatListPane
+window.solidChat = { createChat, copyShareLink, getMyPodRoot }
+window.toggleSound = toggleSound
+
+// Detect bottom nav bar overlay and set CSS variable
+function updateBottomOffset() {
+  if (window.visualViewport) {
+    const offset = window.innerHeight - window.visualViewport.height;
+    document.documentElement.style.setProperty('--bottom-offset', `${Math.max(0, offset)}px`);
+  }
+}
 
 // Initialize: handle auth redirect first, then render sidebar
 async function init() {
+  // Initialize theme
+  initTheme()
+
+  // Set up viewport detection for Android nav bar
+  updateBottomOffset()
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', updateBottomOffset)
+  }
+  window.addEventListener('resize', updateBottomOffset)
+
+  // Sound button is now created in chatListPane with onclick handler
+
+  // Clear unread count when user returns to tab
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && currentChatUri) {
+      resetUnread(currentChatUri)
+      chatListPane.setActiveChat(currentChatUri)
+    }
+  })
+
   // Handle auth redirect callback (if returning from IdP)
   await handleAuthRedirect()
 
@@ -696,10 +1045,23 @@ async function init() {
   })
   sidebar.appendChild(sidebarElement)
 
-  // Check for URI in query string, or load default global chat
-  const params = new URLSearchParams(window.location.search)
-  const initialUri = params.get('uri') || DEFAULT_CHAT_URI
-  loadChat(initialUri)
+  // Move theme selector above Discover Chats button
+  const discoverBtn = sidebar.querySelector('.discover-btn')
+  const themeSelect = document.getElementById('sidebarThemeSelect')
+  if (discoverBtn && themeSelect) {
+    discoverBtn.parentNode.insertBefore(themeSelect.parentNode, discoverBtn)
+  }
+
+  // Check for ?chat= deep link first, then ?uri= (legacy), then saved room, then default
+  const deepLinkedChat = await handleDeepLink()
+  if (deepLinkedChat) {
+    loadChat(deepLinkedChat)
+  } else {
+    const params = new URLSearchParams(window.location.search)
+    const savedRoom = localStorage.getItem('solidchat-current-room')
+    const initialUri = params.get('uri') || savedRoom || DEFAULT_CHAT_URI
+    loadChat(initialUri)
+  }
 }
 
 init()

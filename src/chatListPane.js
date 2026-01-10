@@ -19,14 +19,61 @@ const MEETING = {
 
 // Storage key for localStorage
 const STORAGE_KEY = 'solidchat-chats'
+const UNREAD_KEY = 'solidchat-unread'
 
-// Default global chat
-const DEFAULT_CHAT = {
-  uri: 'https://solid-chat.solidcommunity.net/public/global/chat.ttl',
-  title: 'Solid Chat Global',
-  lastMessage: 'Welcome to the global chat!',
-  timestamp: '2025-12-31T09:00:00Z'
+// Get unread count for a chat
+function getUnreadCount(uri) {
+  try {
+    const data = JSON.parse(localStorage.getItem(UNREAD_KEY) || '{}')
+    return data[uri] || 0
+  } catch {
+    return 0
+  }
 }
+
+// Increment unread count for a chat (call when new message arrives)
+function incrementUnread(uri) {
+  try {
+    const data = JSON.parse(localStorage.getItem(UNREAD_KEY) || '{}')
+    data[uri] = (data[uri] || 0) + 1
+    localStorage.setItem(UNREAD_KEY, JSON.stringify(data))
+    renderChatList()
+  } catch (e) {
+    console.warn('Failed to increment unread:', e)
+  }
+}
+
+// Reset unread count (call when chat is opened)
+function resetUnread(uri) {
+  try {
+    const data = JSON.parse(localStorage.getItem(UNREAD_KEY) || '{}')
+    data[uri] = 0
+    localStorage.setItem(UNREAD_KEY, JSON.stringify(data))
+  } catch (e) {
+    console.warn('Failed to reset unread:', e)
+  }
+}
+
+// Legacy alias for compatibility
+function setLastRead(uri) {
+  resetUnread(uri)
+}
+
+// Default global chats
+const DEFAULT_CHATS = [
+  {
+    uri: 'https://solid-chat.solidweb.org/public/global/chat.ttl',
+    title: 'Solid Chat Global (solidweb.org)',
+    lastMessage: 'Welcome! Faster server.',
+    timestamp: '2025-12-31T12:00:00Z'
+  },
+  {
+    uri: 'https://solid-chat.solidcommunity.net/public/global/chat.ttl',
+    title: 'Solid Chat Global (solidcommunity.net)',
+    lastMessage: 'Welcome to the global chat!',
+    timestamp: '2025-12-31T09:00:00Z'
+  }
+]
 
 // CSS styles
 const styles = `
@@ -57,6 +104,7 @@ const styles = `
   background: linear-gradient(135deg, var(--gradient-start) 0%, var(--gradient-end) 100%);
   color: white;
   padding: 16px 16px;
+  min-height: 76px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -88,10 +136,28 @@ const styles = `
   background: rgba(255,255,255,0.3);
 }
 
+.sound-toggle-btn {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.7);
+  cursor: pointer;
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.2s;
+}
+
+.sound-toggle-btn:hover {
+  color: white;
+  background: rgba(255,255,255,0.15);
+}
+
 .chat-list {
   flex: 1;
   overflow-y: auto;
-  padding: 8px 0;
+  padding: 0 0 8px 0;
 }
 
 .chat-item {
@@ -154,6 +220,21 @@ const styles = `
   font-size: 12px;
   color: var(--text-muted);
   flex-shrink: 0;
+}
+
+.chat-item-badge {
+  background: #e74c3c;
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+  margin-left: 8px;
 }
 
 .chat-item-preview {
@@ -308,6 +389,47 @@ const styles = `
   box-shadow: none;
 }
 
+/* Modal tabs */
+.modal-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.modal-tab {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.modal-tab:hover {
+  background: var(--bg-hover);
+}
+
+.modal-tab.active {
+  background: linear-gradient(135deg, var(--gradient-start) 0%, var(--gradient-end) 100%);
+  color: white;
+  border-color: transparent;
+}
+
+.modal-url-preview {
+  font-size: 11px;
+  color: var(--text-muted);
+  word-break: break-all;
+  padding: 8px 12px;
+  background: var(--bg-hover);
+  border-radius: 6px;
+  margin-bottom: 16px;
+  display: none;
+}
+
 /* Delete button on chat item */
 .chat-item-delete {
   width: 24px;
@@ -364,18 +486,21 @@ function loadChatList() {
     chatList = []
   }
 
-  // Add default global chat if list is empty
+  // Add default global chats if list is empty
   if (chatList.length === 0) {
-    chatList.push({ ...DEFAULT_CHAT })
+    chatList.push(...DEFAULT_CHATS.map(c => ({ ...c })))
     saveChatList()
   }
 
-  // Ensure default chat exists in list
-  const hasDefault = chatList.some(c => c.uri === DEFAULT_CHAT.uri)
-  if (!hasDefault) {
-    chatList.unshift({ ...DEFAULT_CHAT })
-    saveChatList()
+  // Ensure all default chats exist in list
+  let added = false
+  for (const defaultChat of DEFAULT_CHATS) {
+    if (!chatList.some(c => c.uri === defaultChat.uri)) {
+      chatList.unshift({ ...defaultChat })
+      added = true
+    }
   }
+  if (added) saveChatList()
 
   return chatList
 }
@@ -503,6 +628,15 @@ function renderChatList() {
     header.appendChild(title)
     header.appendChild(time)
 
+    // Show unread count badge
+    const unreadCount = getUnreadCount(chat.uri)
+    if (unreadCount > 0) {
+      const badge = dom.createElement('div')
+      badge.className = 'chat-item-badge'
+      badge.textContent = unreadCount > 99 ? '99+' : unreadCount
+      header.appendChild(badge)
+    }
+
     const preview = dom.createElement('div')
     preview.className = 'chat-item-preview'
     preview.textContent = chat.lastMessage || 'No messages yet'
@@ -525,6 +659,7 @@ function renderChatList() {
 
     item.onclick = () => {
       activeUri = chat.uri
+      setLastRead(chat.uri)
       renderChatList()
       if (onSelectCallback) {
         onSelectCallback(chat.uri)
@@ -535,31 +670,108 @@ function renderChatList() {
   })
 }
 
-// Show add chat modal
-function showAddModal(dom) {
+// Show add/create chat modal
+function showAddModal(dom, webId) {
   const overlay = dom.createElement('div')
   overlay.className = 'modal-overlay'
 
   const modal = dom.createElement('div')
   modal.className = 'modal'
 
-  modal.innerHTML = `
-    <div class="modal-title">Add Chat</div>
-    <input type="url" class="modal-input" placeholder="Enter chat URL..." />
-    <div class="modal-buttons">
-      <button class="modal-btn modal-btn-cancel">Cancel</button>
-      <button class="modal-btn modal-btn-add">Add</button>
-    </div>
-  `
+  // Check if user is logged in (can create chats)
+  const canCreate = !!webId
+
+  if (canCreate) {
+    modal.innerHTML = `
+      <div class="modal-title">Add or Create Chat</div>
+      <div class="modal-tabs">
+        <button class="modal-tab active" data-tab="add">Add Existing</button>
+        <button class="modal-tab" data-tab="create">Create New</button>
+      </div>
+      <div class="modal-tab-content" data-content="add">
+        <input type="url" class="modal-input" id="addUrlInput" placeholder="Enter chat URL..." />
+      </div>
+      <div class="modal-tab-content" data-content="create" style="display: none;">
+        <input type="text" class="modal-input" id="createTitleInput" placeholder="Chat title (e.g. Team Standup)" />
+        <select class="modal-input" id="createLocationSelect">
+          <option value="/public/chats/">Public (anyone with link)</option>
+          <option value="/private/chats/">Private (only you)</option>
+        </select>
+        <div class="modal-url-preview" id="urlPreview"></div>
+      </div>
+      <div class="modal-buttons">
+        <button class="modal-btn modal-btn-cancel">Cancel</button>
+        <button class="modal-btn modal-btn-add" id="actionBtn">Add</button>
+      </div>
+    `
+  } else {
+    modal.innerHTML = `
+      <div class="modal-title">Add Chat</div>
+      <input type="url" class="modal-input" id="addUrlInput" placeholder="Enter chat URL..." />
+      <p style="font-size: 12px; color: #a0aec0; margin-bottom: 16px;">Login to create new chats on your pod.</p>
+      <div class="modal-buttons">
+        <button class="modal-btn modal-btn-cancel">Cancel</button>
+        <button class="modal-btn modal-btn-add" id="actionBtn">Add</button>
+      </div>
+    `
+  }
 
   overlay.appendChild(modal)
   dom.body.appendChild(overlay)
 
-  const input = modal.querySelector('.modal-input')
   const cancelBtn = modal.querySelector('.modal-btn-cancel')
-  const addBtn = modal.querySelector('.modal-btn-add')
+  const actionBtn = modal.querySelector('#actionBtn')
+  const addUrlInput = modal.querySelector('#addUrlInput')
 
-  input.focus()
+  let currentTab = 'add'
+
+  // Tab switching
+  if (canCreate) {
+    const tabs = modal.querySelectorAll('.modal-tab')
+    const createTitleInput = modal.querySelector('#createTitleInput')
+    const createLocationSelect = modal.querySelector('#createLocationSelect')
+    const urlPreview = modal.querySelector('#urlPreview')
+
+    // Update URL preview
+    const updatePreview = () => {
+      const title = createTitleInput.value.trim()
+      const location = createLocationSelect.value
+      if (title && webId) {
+        const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+        const podRoot = getPodRootFromWebId(webId)
+        const fullUrl = `${podRoot}${location.slice(1)}${slug}.ttl`
+        urlPreview.textContent = fullUrl
+        urlPreview.style.display = 'block'
+      } else {
+        urlPreview.style.display = 'none'
+      }
+    }
+
+    createTitleInput.addEventListener('input', updatePreview)
+    createLocationSelect.addEventListener('change', updatePreview)
+
+    tabs.forEach(tab => {
+      tab.onclick = () => {
+        tabs.forEach(t => t.classList.remove('active'))
+        tab.classList.add('active')
+        currentTab = tab.dataset.tab
+
+        modal.querySelectorAll('.modal-tab-content').forEach(c => {
+          c.style.display = c.dataset.content === currentTab ? 'block' : 'none'
+        })
+
+        actionBtn.textContent = currentTab === 'add' ? 'Add' : 'Create'
+
+        if (currentTab === 'add') {
+          addUrlInput.focus()
+        } else {
+          createTitleInput.focus()
+        }
+      }
+    })
+  }
+
+  addUrlInput?.focus()
 
   const close = () => {
     overlay.remove()
@@ -571,25 +783,88 @@ function showAddModal(dom) {
 
   cancelBtn.onclick = close
 
-  addBtn.onclick = () => {
-    const uri = input.value.trim()
-    if (uri) {
-      addChat(uri)
-      activeUri = uri
-      renderChatList()
-      if (onSelectCallback) {
-        onSelectCallback(uri)
+  actionBtn.onclick = async () => {
+    if (currentTab === 'add') {
+      const uri = addUrlInput.value.trim()
+      if (uri) {
+        addChat(uri)
+        activeUri = uri
+        renderChatList()
+        if (onSelectCallback) {
+          onSelectCallback(uri)
+        }
+        close()
       }
+    } else {
+      // Create new chat
+      const createTitleInput = modal.querySelector('#createTitleInput')
+      const createLocationSelect = modal.querySelector('#createLocationSelect')
+
+      const title = createTitleInput.value.trim()
+      const location = createLocationSelect.value
+
+      if (!title) {
+        createTitleInput.focus()
+        return
+      }
+
+      const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+      const podRoot = getPodRootFromWebId(webId)
+      const chatUrl = `${podRoot}${location.slice(1)}${slug}.ttl`
+
+      actionBtn.disabled = true
+      actionBtn.textContent = 'Creating...'
+
+      try {
+        // Use the createChat from index.html
+        if (window.solidChat?.createChat) {
+          await window.solidChat.createChat(chatUrl, title)
+        } else {
+          throw new Error('createChat not available')
+        }
+
+        addChat(chatUrl, title)
+        activeUri = chatUrl
+        renderChatList()
+
+        // Copy share link
+        if (window.solidChat?.copyShareLink) {
+          window.solidChat.copyShareLink(chatUrl)
+        }
+
+        if (onSelectCallback) {
+          onSelectCallback(chatUrl)
+        }
+        close()
+      } catch (e) {
+        console.error('Failed to create chat:', e)
+        alert('Failed to create chat: ' + e.message)
+        actionBtn.disabled = false
+        actionBtn.textContent = 'Create'
+      }
+    }
+  }
+
+  // Handle Enter key
+  const handleKeydown = (e) => {
+    if (e.key === 'Enter') {
+      actionBtn.click()
+    } else if (e.key === 'Escape') {
       close()
     }
   }
 
-  input.onkeydown = (e) => {
-    if (e.key === 'Enter') {
-      addBtn.click()
-    } else if (e.key === 'Escape') {
-      close()
-    }
+  addUrlInput?.addEventListener('keydown', handleKeydown)
+  modal.querySelector('#createTitleInput')?.addEventListener('keydown', handleKeydown)
+}
+
+// Get pod root from WebID (simple extraction)
+function getPodRootFromWebId(webId) {
+  try {
+    const url = new URL(webId)
+    return `${url.protocol}//${url.host}/`
+  } catch {
+    return ''
   }
 }
 
@@ -667,13 +942,33 @@ export const chatListPane = {
     title.className = 'sidebar-title'
     title.textContent = 'Chats'
 
+    // Sound toggle button (subtle white bell like Telegram)
+    const soundBtn = dom.createElement('button')
+    soundBtn.className = 'sound-toggle-btn'
+    soundBtn.id = 'soundToggle'
+    soundBtn.title = 'Toggle notification sound'
+    soundBtn.innerHTML = localStorage.getItem('solidchat-sound') !== 'false'
+      ? '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>'
+      : '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/><path d="M3.27 3L2 4.27l2.92 2.92C4.34 8.16 4 9.5 4 11v5l-2 2v1h14.73l2 2L20 19.73 3.27 3z"/></svg>'
+    soundBtn.onclick = () => {
+      if (window.toggleSound) {
+        window.toggleSound()
+      }
+    }
+
     const addBtn = dom.createElement('button')
     addBtn.className = 'add-chat-btn'
     addBtn.textContent = '+'
-    addBtn.title = 'Add chat'
-    addBtn.onclick = () => showAddModal(dom)
+    addBtn.title = 'Add or create chat'
+    addBtn.onclick = () => showAddModal(dom, options.webId)
 
-    header.appendChild(title)
+    // Group title and sound button together (flush)
+    const titleGroup = dom.createElement('div')
+    titleGroup.style.cssText = 'display: flex; align-items: center; gap: 8px;'
+    titleGroup.appendChild(title)
+    titleGroup.appendChild(soundBtn)
+
+    header.appendChild(titleGroup)
     header.appendChild(addBtn)
 
     // Chat list
@@ -739,4 +1034,4 @@ export const chatListPane = {
 }
 
 // Export for use in index.html
-export { addChat, updateChatPreview }
+export { addChat, removeChat, updateChatPreview, setLastRead, incrementUnread, resetUnread }
