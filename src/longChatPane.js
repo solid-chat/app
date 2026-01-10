@@ -769,11 +769,11 @@ function renderMessageContent(dom, content) {
     const parts = token.value.split(URL_REGEX)
 
     for (const part of parts) {
-      // URL-del
+      // URL segment
       if (URL_REGEX.test(part)) {
         URL_REGEX.lastIndex = 0
 
-        // Bilde
+        // Image
         if (IMAGE_EXT.test(part)) {
           const wrapper = dom.createElement('div')
           wrapper.className = 'media-wrapper'
@@ -791,7 +791,29 @@ function renderMessageContent(dom, content) {
           wrapper.appendChild(img)
           container.appendChild(wrapper)
 
-        // Vanlig lenke
+        // Video
+        } else if (VIDEO_EXT.test(part)) {
+          const wrapper = dom.createElement('div')
+          wrapper.className = 'media-wrapper'
+          const video = dom.createElement('video')
+          video.src = part
+          video.controls = true
+          video.preload = 'metadata'
+          wrapper.appendChild(video)
+          container.appendChild(wrapper)
+
+        // Audio
+        } else if (AUDIO_EXT.test(part)) {
+          const wrapper = dom.createElement('div')
+          wrapper.className = 'media-wrapper'
+          const audio = dom.createElement('audio')
+          audio.src = part
+          audio.controls = true
+          audio.preload = 'metadata'
+          wrapper.appendChild(audio)
+          container.appendChild(wrapper)
+
+        // Regular link
         } else {
           const link = dom.createElement('a')
           link.href = part
@@ -801,7 +823,7 @@ function renderMessageContent(dom, content) {
           container.appendChild(link)
         }
 
-      // Vanlig tekst (markdown)
+      // Regular text (markdown)
       } else if (part) {
         const span = dom.createElement('span')
         span.innerHTML = parseMarkdown(part)
@@ -1245,10 +1267,17 @@ export const longChatPane = {
       items.forEach((item, i) => {
         const el = dom.createElement('div')
         el.className = 'mention-item'
-        el.innerHTML = `
-          <div class="mention-name">${item.name}</div>
-          <div class="mention-webid">${item.webId}</div>
-        `
+
+        const nameDiv = dom.createElement('div')
+        nameDiv.className = 'mention-name'
+        nameDiv.textContent = item.name
+
+        const webIdDiv = dom.createElement('div')
+        webIdDiv.className = 'mention-webid'
+        webIdDiv.textContent = item.webId
+
+        el.appendChild(nameDiv)
+        el.appendChild(webIdDiv)
 
         el.onmousedown = e => e.preventDefault()
         el.onclick = () => insertMention(item)
