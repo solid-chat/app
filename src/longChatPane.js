@@ -26,6 +26,14 @@ const FLOW = {
   Message: 'http://www.w3.org/2005/01/wf/flow#Message'
 }
 
+// Matches @{webId} or @https://... (without braces)
+const MENTION_RE = /@\{([^}]+)\}|@(https?:\/\/[^\s]+)/g
+const MENTION_TRIGGER = /@([^\s@{]*)$/
+let mentionIndex = -1
+let mentionMatches = []
+let mentionCandidates = []
+
+
 // CSS styles as a string (will be injected)
 const styles = `
 .long-chat-pane {
@@ -622,6 +630,58 @@ const styles = `
 .message-bubble {
   position: relative;
 }
+.mention {
+  color: #5a67d8;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.mention:hover {
+  text-decoration: underline;
+}
+
+.mention-popup {
+  position: absolute;
+  bottom: 100%;
+  left: 60px;
+  margin-bottom: 8px;
+  background: white;
+  border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.18);
+  border: 1px solid #e2e8f0;
+  min-width: 220px;
+  max-width: 300px;
+  max-height: 220px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  z-index: 200;
+}
+
+.mention-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.mention-item:hover,
+.mention-item.active {
+  background: #edf2ff;
+}
+
+.mention-name {
+  font-weight: 600;
+  color: #4c51bf;
+}
+
+.mention-webid {
+  font-size: 12px;
+  color: #718096;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 `
 
 // Inject styles once
@@ -663,6 +723,11 @@ function formatTime(date) {
   }
 }
 
+function displayNameForWebId(webId) {
+  const m = mentionCandidates.find(p => p.webId === webId)
+  return m?.name || shortenWebId(webId)
+}
+
 // URL regex
 const URL_REGEX = /(https?:\/\/[^\s<>"{}|\\^`[\]]+)/gi
 
@@ -692,9 +757,11 @@ function parseMarkdown(text) {
   })
   // Inline code
   html = html.replace(/`([^`]+)`/g, '<code>$1</code>')
-  // Bold
-  html = html.replace(/\*([^*]+)\*/g, '<strong>$1</strong>')
-  // Italic
+  // Bold - **text** or *text* (also handles fullwidth asterisk ＊)
+  html = html.replace(/[*＊]{2}([^*＊]+)[*＊]{2}/g, '<strong>$1</strong>')
+  html = html.replace(/[*＊]([^*＊]+)[*＊]/g, '<strong>$1</strong>')
+  // Italic - __text__ or _text_
+  html = html.replace(/__([^_]+)__/g, '<em>$1</em>')
   html = html.replace(/_([^_]+)_/g, '<em>$1</em>')
   // Strikethrough
   html = html.replace(/~([^~]+)~/g, '<s>$1</s>')
@@ -706,68 +773,104 @@ function parseMarkdown(text) {
 function renderMessageContent(dom, content) {
   const container = dom.createElement('div')
 
-  // Split by URLs
-  const parts = content.split(URL_REGEX)
+  const tokens = []
+  let lastIndex = 0
 
-  for (const part of parts) {
-    if (URL_REGEX.test(part)) {
-      URL_REGEX.lastIndex = 0 // Reset regex state
+  content.replace(MENTION_RE, (match, bracedWebId, plainWebId, index) => {
+    const webId = bracedWebId || plainWebId  // Use whichever captured
+    if (index > lastIndex) {
+      tokens.push({ type: 'text', value: content.slice(lastIndex, index) })
+    }
+    tokens.push({ type: 'mention', webId })
+    lastIndex = index + match.length
+  })
 
-      // Check if it's media
-      if (IMAGE_EXT.test(part)) {
+  if (lastIndex < content.length) {
+    tokens.push({ type: 'text', value: content.slice(lastIndex) })
+  }
+
+  // 2. Render tokens
+  for (const token of tokens) {
+    if (token.type === 'mention') {
+      const a = dom.createElement('a')
+      a.className = 'mention'
+      a.href = token.webId
+      a.textContent = '@' + displayNameForWebId(token.webId)
+      a.target = '_blank'
+      a.rel = 'noopener'
+      container.appendChild(a)
+      continue
+    }
+
+    const parts = token.value.split(URL_REGEX)
+
+    for (const part of parts) {
+      // URL segment
+      if (URL_REGEX.test(part)) {
+        URL_REGEX.lastIndex = 0
+
         // Image
-        const wrapper = dom.createElement('div')
-        wrapper.className = 'media-wrapper'
-        const img = dom.createElement('img')
-        img.src = part
-        img.alt = 'Image'
-        img.loading = 'lazy'
-        img.onclick = () => window.open(part, '_blank')
-        img.onload = () => {
-          const mc = img.closest('.messages-container')
-          if (mc) mc.scrollTop = mc.scrollHeight
-        }
-        wrapper.appendChild(img)
-        container.appendChild(wrapper)
-      } else if (VIDEO_EXT.test(part)) {
+        if (IMAGE_EXT.test(part)) {
+          const wrapper = dom.createElement('div')
+          wrapper.className = 'media-wrapper'
+
+          const img = dom.createElement('img')
+          img.src = part
+          img.alt = 'Image'
+          img.loading = 'lazy'
+          img.onclick = () => window.open(part, '_blank')
+          img.onload = () => {
+            const mc = wrapper.closest('.messages-container')
+            if (mc) mc.scrollTop = mc.scrollHeight
+          }
+
+          wrapper.appendChild(img)
+          container.appendChild(wrapper)
+
         // Video
-        const wrapper = dom.createElement('div')
-        wrapper.className = 'media-wrapper'
-        const video = dom.createElement('video')
-        video.src = part
-        video.controls = true
-        video.preload = 'metadata'
-        wrapper.appendChild(video)
-        container.appendChild(wrapper)
-      } else if (AUDIO_EXT.test(part)) {
+        } else if (VIDEO_EXT.test(part)) {
+          const wrapper = dom.createElement('div')
+          wrapper.className = 'media-wrapper'
+          const video = dom.createElement('video')
+          video.src = part
+          video.controls = true
+          video.preload = 'metadata'
+          wrapper.appendChild(video)
+          container.appendChild(wrapper)
+
         // Audio
-        const wrapper = dom.createElement('div')
-        wrapper.className = 'media-wrapper'
-        const audio = dom.createElement('audio')
-        audio.src = part
-        audio.controls = true
-        audio.preload = 'metadata'
-        wrapper.appendChild(audio)
-        container.appendChild(wrapper)
-      } else {
+        } else if (AUDIO_EXT.test(part)) {
+          const wrapper = dom.createElement('div')
+          wrapper.className = 'media-wrapper'
+          const audio = dom.createElement('audio')
+          audio.src = part
+          audio.controls = true
+          audio.preload = 'metadata'
+          wrapper.appendChild(audio)
+          container.appendChild(wrapper)
+
         // Regular link
-        const link = dom.createElement('a')
-        link.href = part
-        link.textContent = part.length > 50 ? part.slice(0, 50) + '...' : part
-        link.target = '_blank'
-        link.rel = 'noopener noreferrer'
-        container.appendChild(link)
+        } else {
+          const link = dom.createElement('a')
+          link.href = part
+          link.textContent = part.length > 50 ? part.slice(0, 50) + '...' : part
+          link.target = '_blank'
+          link.rel = 'noopener noreferrer'
+          container.appendChild(link)
+        }
+
+      // Regular text (markdown)
+      } else if (part) {
+        const span = dom.createElement('span')
+        span.innerHTML = parseMarkdown(part)
+        container.appendChild(span)
       }
-    } else if (part) {
-      // Regular text with markdown
-      const span = dom.createElement('span')
-      span.innerHTML = parseMarkdown(part)
-      container.appendChild(span)
     }
   }
 
   return container
 }
+
 
 // Get initials from name
 function getInitials(name) {
@@ -785,19 +888,29 @@ async function fetchAvatar(webId, store, $rdf) {
 
   try {
     const profile = $rdf.sym(webId)
-    await store.fetcher.load(profile.doc())
+    const doc = profile.doc()
+    await store.fetcher.load(doc, { headers: { Accept: 'text/turtle, application/ld+json, application/rdf+xml' } })
 
     const ns = $rdf.Namespace
     const FOAF = ns('http://xmlns.com/foaf/0.1/')
     const VCARD = ns('http://www.w3.org/2006/vcard/ns#')
 
-    const avatar = store.any(profile, FOAF('img'))?.value ||
-                   store.any(profile, FOAF('depiction'))?.value ||
-                   store.any(profile, VCARD('hasPhoto'))?.value
+    let avatar = store.any(profile, FOAF('img'))?.value ||
+                 store.any(profile, FOAF('depiction'))?.value ||
+                 store.any(profile, VCARD('hasPhoto'))?.value ||
+                 store.any(profile, VCARD('photo'))?.value
+
+    // Resolve relative URLs against profile base
+    if (avatar && !avatar.startsWith('http')) {
+      const base = profile.doc().value
+      avatar = new URL(avatar, base).href
+    }
+
 
     avatarCache.set(webId, avatar)
     return avatar
   } catch (e) {
+    console.warn('Failed to fetch avatar for', webId, e.message || e)
     avatarCache.set(webId, null)
     return null
   }
@@ -922,6 +1035,15 @@ function createMessageElement(dom, message, isOwn, callbacks) {
   return row
 }
 
+function shortenWebId(webId) {
+  try {
+    const u = new URL(webId)
+    return u.hostname.split('.')[0]
+  } catch {
+    return webId
+  }
+}
+
 // Main pane definition
 export const longChatPane = {
   icon: 'https://solid.github.io/solid-ui/src/icons/noun_Forum_3572062.svg',
@@ -976,6 +1098,7 @@ export const longChatPane = {
   },
 
   render: function(subject, context, options) {
+    let mentionStartIndex = null
     const dom = context.dom
     const store = context.session.store
     const $rdf = store.rdflib || globalThis.$rdf
@@ -1061,6 +1184,11 @@ export const longChatPane = {
     })
     emojiPicker.appendChild(emojiGrid)
     inputArea.appendChild(emojiPicker)
+
+    const mentionPopup = dom.createElement('div')
+    mentionPopup.className = 'mention-popup'
+    mentionPopup.style.display = 'none'
+    inputArea.appendChild(mentionPopup)
 
     // Emoji button
     const emojiBtn = dom.createElement('button')
@@ -1171,6 +1299,56 @@ export const longChatPane = {
       const file = fileInput.files[0]
       if (file) await uploadFile(file)
       fileInput.value = ''
+    }
+
+    function renderMentionPopup(items) {
+      mentionPopup.innerHTML = ''
+      mentionIndex = -1
+
+      if (!items.length) {
+        mentionPopup.style.display = 'none'
+        return
+      }
+
+      items.forEach((item, i) => {
+        const el = dom.createElement('div')
+        el.className = 'mention-item'
+
+        const nameDiv = dom.createElement('div')
+        nameDiv.className = 'mention-name'
+        nameDiv.textContent = item.name
+
+        const webIdDiv = dom.createElement('div')
+        webIdDiv.className = 'mention-webid'
+        webIdDiv.textContent = item.webId
+
+        el.appendChild(nameDiv)
+        el.appendChild(webIdDiv)
+
+        el.onmousedown = e => e.preventDefault()
+        el.onclick = () => insertMention(item)
+        mentionPopup.appendChild(el)
+      })
+
+      mentionPopup.style.display = 'block'
+    }
+
+    function insertMention(person) {
+      if (mentionStartIndex == null) return
+
+      const value = input.value
+      const caret = input.selectionStart
+
+      const before = value.slice(0, mentionStartIndex)
+      const after = value.slice(caret)
+
+      input.value = `${before}@{${person.webId}} ${after}`
+      input.focus()
+
+      mentionPopup.style.display = 'none'
+      mentionStartIndex = null
+
+      sendBtn.disabled = !input.value.trim()
     }
 
     const inputWrapper = dom.createElement('div')
@@ -1684,6 +1862,8 @@ export const longChatPane = {
         }
 
         messages = allMessages
+        rebuildMentionCandidates()
+
         statusEl.textContent = `${messages.length} messages`
 
         // Update reactions for already-rendered messages
@@ -1755,6 +1935,7 @@ export const longChatPane = {
         const DCT = ns('http://purl.org/dc/terms/')
         const FOAF = ns('http://xmlns.com/foaf/0.1/')
         const RDF = ns('http://www.w3.org/1999/02/22-rdf-syntax-ns#')
+        const SCHEMA = ns('http://schema.org/')
 
         // Determine target document - check for year/month/day structure
         const targetDoc = await ensureDailyChat(subject, store, context)
@@ -1762,6 +1943,7 @@ export const longChatPane = {
         const msgId = `#msg-${Date.now()}`
         const msgNode = $rdf.sym(targetDoc.uri + msgId)
         const now = new Date().toISOString()
+        const mentionedWebIds = [...text.matchAll(MENTION_RE)].map(m => m[1] || m[2])
 
         const ins = [
           $rdf.st(subject, FLOW('message'), msgNode, targetDoc.doc()),
@@ -1773,6 +1955,17 @@ export const longChatPane = {
         if (currentUser) {
           ins.push($rdf.st(msgNode, FOAF('maker'), $rdf.sym(currentUser), targetDoc.doc()))
         }
+
+        mentionedWebIds.forEach(webId => {
+          ins.push(
+            $rdf.st(
+              msgNode,
+              SCHEMA('mentions'),
+              $rdf.sym(webId),
+              subject.doc()
+            )
+          )
+        })
 
         await store.updater.update([], ins)
 
@@ -1814,6 +2007,27 @@ export const longChatPane = {
     // Event listeners
     input.addEventListener('input', () => {
       sendBtn.disabled = !input.value.trim()
+
+      const caret = input.selectionStart
+      const before = input.value.slice(0, caret)
+      const match = before.match(MENTION_TRIGGER)
+      if (match) {
+        mentionStartIndex = caret - match[0].length
+      }
+
+      if (match) {
+        const q = match[1].toLowerCase()
+
+        mentionMatches = mentionCandidates.filter(p =>
+          p.name.toLowerCase().includes(q) ||
+          p.webId.toLowerCase().includes(q)
+        )
+
+        renderMentionPopup(mentionMatches)
+      } else {
+        mentionPopup.style.display = 'none'
+      }
+
       input.style.height = 'auto'
       input.style.height = Math.min(input.scrollHeight, 100) + 'px'
     })
@@ -1822,6 +2036,26 @@ export const longChatPane = {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault()
         sendMessage()
+      }
+      if (mentionPopup.style.display === 'block') {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault()
+          mentionIndex = (mentionIndex + 1) % mentionMatches.length
+        }
+        if (e.key === 'ArrowUp') {
+          e.preventDefault()
+          mentionIndex = (mentionIndex - 1 + mentionMatches.length) % mentionMatches.length
+        }
+        if (e.key === 'Enter' && mentionIndex >= 0) {
+          e.preventDefault()
+          insertMention(mentionMatches[mentionIndex])
+          return
+        }
+
+        const items = mentionPopup.querySelectorAll('.mention-item')
+        items.forEach((el, i) =>
+          el.classList.toggle('active', i === mentionIndex)
+        )
       }
     })
 
