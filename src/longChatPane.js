@@ -865,9 +865,15 @@ async function fetchAvatar(webId, store, $rdf) {
     const FOAF = ns('http://xmlns.com/foaf/0.1/')
     const VCARD = ns('http://www.w3.org/2006/vcard/ns#')
 
-    const avatar = store.any(profile, FOAF('img'))?.value ||
-                   store.any(profile, FOAF('depiction'))?.value ||
-                   store.any(profile, VCARD('hasPhoto'))?.value
+    let avatar = store.any(profile, FOAF('img'))?.value ||
+                 store.any(profile, FOAF('depiction'))?.value ||
+                 store.any(profile, VCARD('hasPhoto'))?.value
+
+    // Resolve relative URLs against profile base
+    if (avatar && !avatar.startsWith('http')) {
+      const base = profile.doc().value
+      avatar = new URL(avatar, base).href
+    }
 
     avatarCache.set(webId, avatar)
     return avatar
