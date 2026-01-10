@@ -645,7 +645,9 @@ const styles = `
   box-shadow: 0 6px 20px rgba(0,0,0,0.18);
   border: 1px solid #e2e8f0;
   min-width: 220px;
+  max-width: 300px;
   max-height: 220px;
+  overflow-x: hidden;
   overflow-y: auto;
   z-index: 200;
 }
@@ -669,6 +671,9 @@ const styles = `
 .mention-webid {
   font-size: 12px;
   color: #718096;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 `
