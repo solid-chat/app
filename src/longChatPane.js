@@ -634,11 +634,33 @@ function injectStyles(dom) {
   stylesInjected = true
 }
 
-// Format timestamp
+// Format timestamp - shows date if not today
 function formatTime(date) {
   if (!date) return ''
   const d = new Date(date)
-  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
+  const today = new Date()
+  const yesterday = new Date(today)
+  yesterday.setDate(yesterday.getDate() - 1)
+  
+  // Check if same day
+  const isToday = d.toDateString() === today.toDateString()
+  const isYesterday = d.toDateString() === yesterday.toDateString()
+  
+  const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
+  
+  if (isToday) {
+    return time
+  } else if (isYesterday) {
+    return `Yesterday ${time}`
+  } else if (d.getFullYear() === today.getFullYear()) {
+    // Same year: show month/day + time
+    const date = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    return `${date} ${time}`
+  } else {
+    // Different year: show full date + time
+    const date = d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+    return `${date} ${time}`
+  }
 }
 
 // URL regex
