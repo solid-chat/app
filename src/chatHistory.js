@@ -14,7 +14,7 @@
 export async function ensureDailyChat(subject, store, context) {
   const $rdf = store.rdflib || globalThis.$rdf
   
-  // Get the base URL from subject (remove /chat.ttl or #this etc)
+  // Get the base URL from subject (remove /*.ttl or #this etc)
   let baseUrl = subject.uri
   
   // Remove fragment
@@ -22,9 +22,9 @@ export async function ensureDailyChat(subject, store, context) {
     baseUrl = baseUrl.split('#')[0]
   }
   
-  // Remove trailing /chat.ttl if present
-  if (baseUrl.endsWith('/chat.ttl')) {
-    baseUrl = baseUrl.substring(0, baseUrl.lastIndexOf('/chat.ttl'))
+  // Remove trailing .ttl file if present (not just chat.ttl)
+  if (baseUrl.endsWith('.ttl')) {
+    baseUrl = baseUrl.substring(0, baseUrl.lastIndexOf('/'))
   } else if (baseUrl.endsWith('/')) {
     baseUrl = baseUrl.substring(0, baseUrl.length - 1)
   }
@@ -117,7 +117,7 @@ export async function ensureDailyChat(subject, store, context) {
 /**
  * Get the base URL from a chat subject
  * @param {NamedNode} subject - The chat subject
- * @returns {string} Base URL without fragments or chat.ttl
+ * @returns {string} Base URL without fragments or .ttl file
  */
 function getChatBaseUrl(subject) {
   let baseUrl = subject.uri
@@ -127,9 +127,9 @@ function getChatBaseUrl(subject) {
     baseUrl = baseUrl.split('#')[0]
   }
   
-  // Remove trailing /chat.ttl if present
-  if (baseUrl.endsWith('/chat.ttl')) {
-    baseUrl = baseUrl.substring(0, baseUrl.lastIndexOf('/chat.ttl'))
+  // Remove trailing .ttl file if present (any .ttl, not just chat.ttl)
+  if (baseUrl.endsWith('.ttl')) {
+    baseUrl = baseUrl.substring(0, baseUrl.lastIndexOf('/'))
   } else if (baseUrl.endsWith('/')) {
     baseUrl = baseUrl.substring(0, baseUrl.length - 1)
   }

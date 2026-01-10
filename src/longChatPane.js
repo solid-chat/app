@@ -728,6 +728,23 @@ function displayNameForWebId(webId) {
   return m?.name || shortenWebId(webId)
 }
 
+function shortenWebId(webId) {
+  try {
+    const url = new URL(webId)
+    // Extract username from path or hash
+    const parts = url.pathname.split('/').filter(Boolean)
+    if (parts.length > 0) {
+      return parts[0]
+    }
+    if (url.hash) {
+      return url.hash.substring(1)
+    }
+    return url.hostname.split('.')[0]
+  } catch {
+    return webId.split('/').pop().split('#')[0]
+  }
+}
+
 // URL regex
 const URL_REGEX = /(https?:\/\/[^\s<>"{}|\\^`[\]]+)/gi
 
@@ -1033,15 +1050,6 @@ function createMessageElement(dom, message, isOwn, callbacks) {
   row.appendChild(bubble)
 
   return row
-}
-
-function shortenWebId(webId) {
-  try {
-    const u = new URL(webId)
-    return u.hostname.split('.')[0]
-  } catch {
-    return webId
-  }
 }
 
 // Main pane definition
@@ -1632,6 +1640,22 @@ export const longChatPane = {
       onEdit: handleEdit,
       onDelete: handleDelete,
       onReact: handleReact
+    }
+
+    // Rebuild mention candidates from loaded messages
+    function rebuildMentionCandidates() {
+      const uniqueAuthors = new Map()
+      
+      for (const msg of messages) {
+        if (msg.authorUri && !uniqueAuthors.has(msg.authorUri)) {
+          uniqueAuthors.set(msg.authorUri, {
+            webId: msg.authorUri,
+            name: msg.author || shortenWebId(msg.authorUri)
+          })
+        }
+      }
+      
+      mentionCandidates = Array.from(uniqueAuthors.values())
     }
 
     // Infinite scroll handler
