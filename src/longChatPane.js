@@ -5,6 +5,8 @@
  * Uses vanilla JS DOM manipulation.
  */
 
+import { ensureDailyChat, loadPreviousDays, loadRecentHistory } from './chatHistory.js'
+
 const CHAT = {
   namespace: 'http://www.w3.org/2007/ont/chat#',
   Message: 'http://www.w3.org/2007/ont/chat#Message',
@@ -572,8 +574,11 @@ const styles = `
   border-radius: 16px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
   position: absolute;
-  bottom: -8px;
-  left: 8px;
+  bottom: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  white-space: nowrap;
 }
 
 .message-row:hover .reaction-bar {
@@ -689,11 +694,33 @@ function injectStyles(dom) {
   stylesInjected = true
 }
 
-// Format timestamp
+// Format timestamp - shows date if not today
 function formatTime(date) {
   if (!date) return ''
   const d = new Date(date)
-  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
+  const today = new Date()
+  const yesterday = new Date(today)
+  yesterday.setDate(yesterday.getDate() - 1)
+  
+  // Check if same day
+  const isToday = d.toDateString() === today.toDateString()
+  const isYesterday = d.toDateString() === yesterday.toDateString()
+  
+  const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
+  
+  if (isToday) {
+    return time
+  } else if (isYesterday) {
+    return `Yesterday ${time}`
+  } else if (d.getFullYear() === today.getFullYear()) {
+    // Same year: show month/day + time
+    const date = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    return `${date} ${time}`
+  } else {
+    // Different year: show full date + time
+    const date = d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+    return `${date} ${time}`
+  }
 }
 
 function displayNameForWebId(webId) {
@@ -1354,6 +1381,9 @@ export const longChatPane = {
     let renderedUris = new Set()
     let currentUser = null
     let isFirstLoad = true
+    let oldestLoadedDate = new Date()
+    let isLoadingHistory = false
+    let hasMoreHistory = true
 
     // Get current user
     const authn = context.session?.logic?.authn || globalThis.SolidLogic?.authn
@@ -1604,20 +1634,87 @@ export const longChatPane = {
       onReact: handleReact
     }
 
-    function rebuildMentionCandidates() {
-      const map = new Map()
-
-      messages.forEach(m => {
-        if (m.authorUri) {
-          map.set(m.authorUri, {
-            webId: m.authorUri,
-            name: m.author || shortenWebId(m.authorUri)
-          })
+    // Infinite scroll handler
+    async function handleScroll() {
+      // Check if scrolled near top (within 100px)
+      if (messagesContainer.scrollTop < 100 && !isLoadingHistory && hasMoreHistory) {
+        isLoadingHistory = true
+        
+        // Show loading indicator
+        const loadingDiv = dom.createElement('div')
+        loadingDiv.className = 'loading'
+        loadingDiv.textContent = 'Loading older messages...'
+        loadingDiv.style.position = 'sticky'
+        loadingDiv.style.top = '0'
+        messagesContainer.insertBefore(loadingDiv, messagesContainer.firstChild)
+        
+        // Remember scroll position
+        const oldScrollHeight = messagesContainer.scrollHeight
+        
+        try {
+          const result = await loadPreviousDays(subject, store, oldestLoadedDate, 7)
+          
+          if (result.messages.length > 0) {
+            // Filter out already-rendered messages
+            const newMessages = result.messages.filter(m => !renderedUris.has(m.uri))
+            
+            if (newMessages.length > 0) {
+              // Prepend new messages
+              const fragment = dom.createDocumentFragment()
+              for (const msg of newMessages) {
+                const isOwn = currentUser && msg.authorUri === currentUser
+                const el = createMessageElement(dom, msg, isOwn, messageCallbacks)
+                fragment.appendChild(el)
+                renderedUris.add(msg.uri)
+              }
+              
+              // Insert after loading indicator
+              if (messagesContainer.firstChild === loadingDiv) {
+                messagesContainer.insertBefore(fragment, loadingDiv.nextSibling)
+              }
+              
+              // Restore scroll position (prevent jump)
+              const newScrollHeight = messagesContainer.scrollHeight
+              messagesContainer.scrollTop = newScrollHeight - oldScrollHeight
+              
+              // Update messages array
+              messages = [...newMessages, ...messages]
+              statusEl.textContent = `${messages.length} messages`
+              
+              // Load avatars for new messages
+              const newWebIds = [...new Set(newMessages.map(m => m.authorUri).filter(Boolean))]
+              Promise.all(newWebIds.map(webId =>
+                fetchAvatar(webId, store, $rdf).then(avatarUrl => ({ webId, avatarUrl }))
+              )).then(results => {
+                results.forEach(({ webId, avatarUrl }) => {
+                  if (avatarUrl) {
+                    const avatars = messagesContainer.querySelectorAll(`.message-avatar[data-webid="${webId}"]`)
+                    avatars.forEach(el => {
+                      el.innerHTML = `<img src="${avatarUrl}" alt="" />`
+                    })
+                  }
+                })
+              })
+            }
+            
+            oldestLoadedDate = result.oldestDate
+            hasMoreHistory = result.hasMore
+          } else {
+            hasMoreHistory = false
+          }
+          
+        } catch (err) {
+          console.error('Error loading history:', err)
         }
-      })
-
-      mentionCandidates = [...map.values()]
+        
+        // Remove loading indicator
+        loadingDiv.remove()
+        isLoadingHistory = false
+      }
     }
+    
+    // Attach scroll listener
+    messagesContainer.addEventListener('scroll', handleScroll)
 
     // Load messages from store
     async function loadMessages(skipFetch = false) {
@@ -1629,90 +1726,95 @@ export const longChatPane = {
       try {
         // Define namespaces
         const ns = $rdf.Namespace
-        const FLOW = ns('http://www.w3.org/2005/01/wf/flow#')
-        const SIOC = ns('http://rdfs.org/sioc/ns#')
         const DC = ns('http://purl.org/dc/elements/1.1/')
         const DCT = ns('http://purl.org/dc/terms/')
-        const FOAF = ns('http://xmlns.com/foaf/0.1/')
 
-        // Fetch the document (skip if refresh already loaded fresh data)
-        const doc = subject.doc ? subject.doc() : subject
-        if (!skipFetch) {
-          await store.fetcher.load(doc)
-        }
+        // Ensure today's chat exists (for sending new messages)
+        await ensureDailyChat(subject, store, context)
 
-        // Get chat title from the subject or document
-        const chatNode = subject.uri.includes('#') ? subject : $rdf.sym(subject.uri + '#this')
-        const title = store.any(chatNode, DCT('title'), null, doc)?.value ||
-                     store.any(chatNode, DC('title'), null, doc)?.value ||
-                     store.any(subject, DCT('title'), null, doc)?.value ||
-                     store.any(null, DCT('title'), null, doc)?.value
-        if (title) {
-          // Show title with URI as subtitle
-          nameEl.textContent = title
-          nameEl.title = subject.uri  // Tooltip shows full URI
-        }
-
-        // Extract all messages with sioc:content from this document
-        const contentStatements = store.statementsMatching(null, SIOC('content'), null, doc)
-        const newMessages = []
-
-        for (const st of contentStatements) {
-          const msgNode = st.subject
-          const content = st.object.value
-
-          if (!content) continue
-
-          const date = store.any(msgNode, DCT('created'), null, doc)?.value ||
-                      store.any(msgNode, DC('created'), null, doc)?.value ||
-                      store.any(msgNode, DC('date'), null, doc)?.value
-
-          const maker = store.any(msgNode, FOAF('maker'), null, doc) ||
-                       store.any(msgNode, DC('author'), null, doc) ||
-                       store.any(msgNode, DCT('creator'), null, doc)
-
-          let authorName = null
-          if (maker) {
-            // Try to get name from loaded profile or use URI fragment
-            authorName = store.any(maker, FOAF('name'))?.value ||
-                        maker.value?.split('//')[1]?.split('.')[0] ||
-                        'Unknown'
+        let allMessages = []
+        
+        if (isFirstLoad) {
+          // Load recent history (last 7 days) on initial load
+          const result = await loadRecentHistory(subject, store, 7)
+          allMessages = result.messages
+          oldestLoadedDate = result.oldestDate
+        } else {
+          // For refresh, just reload today's messages
+          const dailyDoc = await ensureDailyChat(subject, store, context)
+          await store.fetcher.load(dailyDoc, { force: true })
+          
+          const SIOC = ns('http://rdfs.org/sioc/ns#')
+          const FOAF = ns('http://xmlns.com/foaf/0.1/')
+          const SCHEMA = ns('http://schema.org/')
+          
+          const contentStatements = store.statementsMatching(null, SIOC('content'), null, dailyDoc)
+          const todayMessages = []
+          
+          for (const st of contentStatements) {
+            const msgNode = st.subject
+            const content = st.object.value
+            
+            if (!content) continue
+            
+            const date = store.any(msgNode, DCT('created'), null, dailyDoc)?.value ||
+                        store.any(msgNode, DC('created'), null, dailyDoc)?.value ||
+                        store.any(msgNode, DC('date'), null, dailyDoc)?.value
+            
+            const maker = store.any(msgNode, FOAF('maker'), null, dailyDoc) ||
+                         store.any(msgNode, DC('author'), null, dailyDoc) ||
+                         store.any(msgNode, DCT('creator'), null, dailyDoc)
+            
+            let authorName = null
+            if (maker) {
+              authorName = store.any(maker, FOAF('name'))?.value ||
+                          maker.value?.split('//')[1]?.split('.')[0] ||
+                          'Unknown'
+            }
+            
+            todayMessages.push({
+              uri: msgNode.value,
+              content,
+              date: date ? new Date(date) : new Date(),
+              author: authorName,
+              authorUri: maker?.value
+            })
           }
-
-          newMessages.push({
-            uri: msgNode.value,
-            content,
-            date: date ? new Date(date) : new Date(),
-            author: authorName,
-            authorUri: maker?.value
-          })
-        }
-
-        // Sort by date
-        newMessages.sort((a, b) => (a.date || 0) - (b.date || 0))
-
-        // Keep only last 100 messages for performance
-        const allMessages = newMessages.slice(-100)
-
-        // Load reactions for messages
-        const SCHEMA = ns('http://schema.org/')
-        const reactionStatements = store.statementsMatching(null, SCHEMA('about'), null, doc)
-        for (const st of reactionStatements) {
-          const reactionNode = st.subject
-          const aboutMsg = st.object.value
-          const emoji = store.any(reactionNode, SCHEMA('name'), null, doc)?.value
-          const agent = store.any(reactionNode, SCHEMA('agent'), null, doc)?.value
-
-          if (emoji && agent) {
-            const msg = allMessages.find(m => m.uri === aboutMsg)
-            if (msg) {
-              if (!msg.reactions) msg.reactions = {}
-              if (!msg.reactions[emoji]) msg.reactions[emoji] = []
-              if (!msg.reactions[emoji].includes(agent)) {
-                msg.reactions[emoji].push(agent)
+          
+          // Load reactions for today's messages
+          const reactionStatements = store.statementsMatching(null, SCHEMA('about'), null, dailyDoc)
+          for (const st of reactionStatements) {
+            const reactionNode = st.subject
+            const aboutMsg = st.object.value
+            const emoji = store.any(reactionNode, SCHEMA('name'), null, dailyDoc)?.value
+            const agent = store.any(reactionNode, SCHEMA('agent'), null, dailyDoc)?.value
+            
+            if (emoji && agent) {
+              const msg = todayMessages.find(m => m.uri === aboutMsg)
+              if (msg) {
+                if (!msg.reactions) msg.reactions = {}
+                if (!msg.reactions[emoji]) msg.reactions[emoji] = []
+                if (!msg.reactions[emoji].includes(agent)) {
+                  msg.reactions[emoji].push(agent)
+                }
               }
             }
           }
+          
+          // Merge with existing messages
+          allMessages = [...messages, ...todayMessages.filter(m => !renderedUris.has(m.uri))]
+          allMessages.sort((a, b) => (a.date || 0) - (b.date || 0))
+        }
+
+        // Get chat title
+        const chatNode = subject.uri.includes('#') ? subject : $rdf.sym(subject.uri + '#this')
+        const title = store.any(chatNode, DCT('title'))?.value ||
+                     store.any(chatNode, DC('title'))?.value ||
+                     store.any(subject, DCT('title'))?.value ||
+                     store.any(null, DCT('title'))?.value
+        if (title) {
+          nameEl.textContent = title
+          nameEl.title = subject.uri
         }
 
         // Find messages that haven't been rendered yet
@@ -1835,20 +1937,23 @@ export const longChatPane = {
         const RDF = ns('http://www.w3.org/1999/02/22-rdf-syntax-ns#')
         const SCHEMA = ns('http://schema.org/')
 
+        // Determine target document - check for year/month/day structure
+        const targetDoc = await ensureDailyChat(subject, store, context)
+
         const msgId = `#msg-${Date.now()}`
-        const msgNode = $rdf.sym(subject.uri + msgId)
+        const msgNode = $rdf.sym(targetDoc.uri + msgId)
         const now = new Date().toISOString()
         const mentionedWebIds = [...text.matchAll(MENTION_RE)].map(m => m[1] || m[2])
 
         const ins = [
-          $rdf.st(subject, FLOW('message'), msgNode, subject.doc()),
-          $rdf.st(msgNode, RDF('type'), FLOW('Message'), subject.doc()),
-          $rdf.st(msgNode, SIOC('content'), text, subject.doc()),
-          $rdf.st(msgNode, DCT('created'), $rdf.lit(now, null, $rdf.sym('http://www.w3.org/2001/XMLSchema#dateTime')), subject.doc())
+          $rdf.st(subject, FLOW('message'), msgNode, targetDoc.doc()),
+          $rdf.st(msgNode, RDF('type'), FLOW('Message'), targetDoc.doc()),
+          $rdf.st(msgNode, SIOC('content'), text, targetDoc.doc()),
+          $rdf.st(msgNode, DCT('created'), $rdf.lit(now, null, $rdf.sym('http://www.w3.org/2001/XMLSchema#dateTime')), targetDoc.doc())
         ]
 
         if (currentUser) {
-          ins.push($rdf.st(msgNode, FOAF('maker'), $rdf.sym(currentUser), subject.doc()))
+          ins.push($rdf.st(msgNode, FOAF('maker'), $rdf.sym(currentUser), targetDoc.doc()))
         }
 
         mentionedWebIds.forEach(webId => {

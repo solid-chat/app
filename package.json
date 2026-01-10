@@ -25,7 +25,7 @@
     "test:watch": "vitest"
   },
   "peerDependencies": {
-    "rdflib": ">=2.2.0"
+    "rdflib": ">=2.3.5"
   },
   "keywords": [
     "solid",
