@@ -24,7 +24,6 @@ const FLOW = {
   Message: 'http://www.w3.org/2005/01/wf/flow#Message'
 }
 
-// Matches @{webId} or @https://... (without braces)
 const MENTION_RE = /@\{([^}]+)\}|@(https?:\/\/[^\s]+)/g
 const MENTION_TRIGGER = /@([^\s@{]*)$/
 let mentionIndex = -1
@@ -742,20 +741,21 @@ function parseMarkdown(text) {
   return html
 }
 
-// Render message content with links and media
 function renderMessageContent(dom, content) {
   const container = dom.createElement('div')
 
   const tokens = []
   let lastIndex = 0
 
-  content.replace(MENTION_RE, (match, bracedWebId, plainWebId, index) => {
-    const webId = bracedWebId || plainWebId  // Use whichever captured
-    if (index > lastIndex) {
-      tokens.push({ type: 'text', value: content.slice(lastIndex, index) })
+  content.replace(MENTION_RE, (match, bracedWebId, plainWebId, offset) => {
+    const webId = bracedWebId || plainWebId
+
+    if (offset > lastIndex) {
+      tokens.push({ type: 'text', value: content.slice(lastIndex, offset) })
     }
+
     tokens.push({ type: 'mention', webId })
-    lastIndex = index + match.length
+    lastIndex = offset + match.length
   })
 
   if (lastIndex < content.length) {
@@ -822,7 +822,7 @@ function renderMessageContent(dom, content) {
           wrapper.appendChild(audio)
           container.appendChild(wrapper)
 
-        // Regular link
+        // ✅ Regular link (DEN SOM MANGLER NÅ)
         } else {
           const link = dom.createElement('a')
           link.href = part
@@ -831,8 +831,6 @@ function renderMessageContent(dom, content) {
           link.rel = 'noopener noreferrer'
           container.appendChild(link)
         }
-
-      // Regular text (markdown)
       } else if (part) {
         const span = dom.createElement('span')
         span.innerHTML = parseMarkdown(part)
@@ -840,7 +838,6 @@ function renderMessageContent(dom, content) {
       }
     }
   }
-
   return container
 }
 
@@ -1072,6 +1069,7 @@ export const longChatPane = {
 
   render: function(subject, context, options) {
     let mentionStartIndex = null
+    let mentionsInDraft = []
     const dom = context.dom
     const store = context.session.store
     const $rdf = store.rdflib || globalThis.$rdf
@@ -1271,6 +1269,7 @@ export const longChatPane = {
     fileInput.onchange = async () => {
       const file = fileInput.files[0]
       if (file) await uploadFile(file)
+      mentionsInDraft.length = 0
       fileInput.value = ''
     }
 
@@ -1315,13 +1314,36 @@ export const longChatPane = {
       const before = value.slice(0, mentionStartIndex)
       const after = value.slice(caret)
 
-      input.value = `${before}@{${person.webId}} ${after}`
+      input.value = `${before}@${person.name} ${after}`
+
+      mentionsInDraft.push({
+        start: before.length,
+        text: `@${person.name}`,
+        webId: person.webId
+      })
       input.focus()
 
       mentionPopup.style.display = 'none'
       mentionStartIndex = null
 
       sendBtn.disabled = !input.value.trim()
+    }
+
+    function serializeMentions(text) {
+      if (!mentionsInDraft.length) return text
+
+      let out = text
+
+      mentionsInDraft
+        .sort((a, b) => b.start - a.start)
+        .forEach(m => {
+          const before = out.slice(0, m.start)
+          const after  = out.slice(m.start + m.text.length)
+
+          out = before + `@{${m.webId}}` + after
+        })
+
+      return out
     }
 
     const inputWrapper = dom.createElement('div')
@@ -1494,7 +1516,7 @@ export const longChatPane = {
 
           const updateQuery = `
             DELETE { <${msgUri}> <${SIOC('content').value}> ?content }
-            INSERT { <${msgUri}> <${SIOC('content').value}> ${JSON.stringify(newContent)} }
+            INSERT { <${msgUri}> <${SIOC('content').value}> "${newContent.replace(/"/g, '\\"')}" }
             WHERE { <${msgUri}> <${SIOC('content').value}> ?content }
           `
 
@@ -1820,8 +1842,11 @@ export const longChatPane = {
 
     // Send message
     async function sendMessage() {
-      const text = input.value.trim()
-      if (!text) return
+      const rawText = input.value.trim()
+      if (!rawText) return
+
+      // 🔑 HER – rett etter trim
+      const text = serializeMentions(rawText)
 
       sendBtn.disabled = true
       input.disabled = true
@@ -1838,12 +1863,13 @@ export const longChatPane = {
         const msgId = `#msg-${Date.now()}`
         const msgNode = $rdf.sym(subject.uri + msgId)
         const now = new Date().toISOString()
-        const mentionedWebIds = [...text.matchAll(MENTION_RE)].map(m => m[1] || m[2])
+
+        const mentionedWebIds = [...text.matchAll(MENTION_RE)].map(m => m[1] || m[2]).filter(Boolean)
 
         const ins = [
           $rdf.st(subject, FLOW('message'), msgNode, subject.doc()),
           $rdf.st(msgNode, RDF('type'), FLOW('Message'), subject.doc()),
-          $rdf.st(msgNode, SIOC('content'), text, subject.doc()),
+          $rdf.st(msgNode, SIOC('content'), $rdf.lit(text), subject.doc()),
           $rdf.st(msgNode, DCT('created'), $rdf.lit(now, null, $rdf.sym('http://www.w3.org/2001/XMLSchema#dateTime')), subject.doc())
         ]
 
@@ -1886,6 +1912,10 @@ export const longChatPane = {
         messages.push(msg)
         statusEl.textContent = `${messages.length} messages`
 
+        console.log('RAW:', rawText)
+        console.log('SER:', text)
+
+        mentionsInDraft.length = 0
         input.value = ''
         input.style.height = 'auto'
 
