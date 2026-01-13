@@ -3,3 +3,4 @@
 
 export { longChatPane } from './longChatPane.js'
 export { chatListPane, addChat, removeChat, updateChatPreview } from './chatListPane.js'
+export { ensureDailyChat, loadPreviousDays, loadRecentHistory } from './chatHistory.js'
