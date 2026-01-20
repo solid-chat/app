@@ -72,6 +72,12 @@ const DEFAULT_CHATS = [
     title: 'Solid Chat Global (solidcommunity.net)',
     lastMessage: 'Welcome to the global chat!',
     timestamp: '2025-12-31T09:00:00Z'
+  },
+  {
+    uri: 'https://solid-chat.solid.social/public/global/chat.ttl',
+    title: 'Solid Chat Experimental',
+    lastMessage: 'Experimental chat on solid.social',
+    timestamp: '2026-01-20T12:00:00Z'
   }
 ]
 
