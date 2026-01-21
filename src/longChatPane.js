@@ -913,7 +913,7 @@ function isProfileUrl(url) {
   return url.match(/#(me|id|this|i)$/i) ||
          url.includes('/profile/card#') ||
          url.includes('/profile#') ||
-         url.match(/\/card#\w+$/)||
+         url.match(/\/profile\/card#\w+$/) ||
          url.match(/\/people\/[^/]+#\w+$/)
 }
 
@@ -948,10 +948,14 @@ async function renderContactCard(url, dom, store, $rdf) {
               store.any(webId, VCARD('photo'))?.value ||
               ''
 
-    // Resolve relative URLs
+    // Resolve relative URLs against the full profile URL
     if (img && !img.startsWith('http')) {
-      const base = new URL(url)
-      img = new URL(img, base.origin).href
+      img = new URL(img, url).href
+    }
+
+    // Validate img URL is http/https only (prevent XSS via javascript: URLs)
+    if (img && !img.match(/^https?:\/\//i)) {
+      img = ''
     }
 
     // Get public info (avoid email for privacy)
@@ -969,24 +973,32 @@ async function renderContactCard(url, dom, store, $rdf) {
     // Format homepage for display (remove protocol, shorten)
     const homepageDisplay = homepage ? homepage.replace(/^https?:\/\//, '').replace(/\/$/, '') : ''
 
+    // Escape user data to prevent XSS
+    const safeName = escapeHtml(name)
+    const safeBio = escapeHtml(bio)
+    const safeRole = escapeHtml(role)
+    const safeOrg = escapeHtml(org)
+    const safeHomepage = escapeHtml(homepageDisplay)
+
     card.innerHTML = `
       <div class="preview-header">
         <span class="preview-icon">👤</span>
         <span class="preview-type">PERSON</span>
       </div>
       <div class="preview-content">
-        ${img ? `<img src="${img}" class="preview-avatar" alt="${name}" />` : ''}
-        <div class="preview-name">${img ? '' : '🧑‍💼 '}${name}</div>
-        ${role ? `<div class="preview-detail">💼 ${role}</div>` : ''}
-        ${org ? `<div class="preview-detail">🏢 ${org}</div>` : ''}
-        ${bio ? `<div class="preview-bio">${bio}</div>` : ''}
-        ${homepage ? `<div class="preview-detail">🌐 ${homepageDisplay}</div>` : ''}
+        ${img ? `<img src="${img}" class="preview-avatar" alt="${safeName}" />` : ''}
+        <div class="preview-name">${img ? '' : '🧑‍💼 '}${safeName}</div>
+        ${safeRole ? `<div class="preview-detail">💼 ${safeRole}</div>` : ''}
+        ${safeOrg ? `<div class="preview-detail">🏢 ${safeOrg}</div>` : ''}
+        ${safeBio ? `<div class="preview-bio">${safeBio}</div>` : ''}
+        ${safeHomepage ? `<div class="preview-detail">🌐 ${safeHomepage}</div>` : ''}
       </div>
       <div class="preview-actions">
         <a href="${url}" target="_blank" class="preview-btn preview-btn-primary">View Profile</a>
       </div>
     `
   } catch (err) {
+    console.error('Failed to load contact profile:', url, err)
     card.innerHTML = `<div class="preview-error">Could not load profile</div>`
   }
 
