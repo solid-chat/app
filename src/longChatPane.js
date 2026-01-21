@@ -677,6 +677,167 @@ const styles = `
   white-space: nowrap;
 }
 
+.contact-preview {
+  background: white;
+  border: 1px solid #e8e8f0;
+  border-radius: 16px;
+  overflow: hidden;
+  margin: 8px 0;
+  max-width: 360px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.08);
+  transition: all 0.3s ease;
+}
+
+.contact-preview:hover {
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12), 0 2px 6px rgba(0,0,0,0.08);
+  transform: translateY(-2px);
+}
+
+.preview-header {
+  background: linear-gradient(135deg, #f8f9fd 0%, #f0f2f8 100%);
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid #e8ecf4;
+}
+
+.preview-icon {
+  font-size: 15px;
+  opacity: 0.9;
+}
+
+.preview-type {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #6b7adb;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+
+.preview-content {
+  padding: 20px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.preview-avatar {
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  object-fit: cover;
+  margin-bottom: 14px;
+  border: 3.5px solid #f0f2f8;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.preview-name {
+  font-size: 17px;
+  font-weight: 700;
+  color: #1a1a2e;
+  margin-bottom: 6px;
+  letter-spacing: -0.2px;
+}
+
+.preview-detail {
+  font-size: 13px;
+  color: #5a6272;
+  margin: 4px 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.preview-bio {
+  font-size: 13.5px;
+  color: #6b7280;
+  margin: 10px 0 6px;
+  font-style: italic;
+  line-height: 1.5;
+  max-width: 90%;
+}
+
+.preview-actions {
+  display: flex;
+  gap: 10px;
+  padding: 14px 16px 16px;
+  border-top: 1px solid #e8ecf4;
+  background: #fafbfc;
+}
+
+.preview-btn {
+  flex: 1;
+  padding: 11px 18px;
+  border-radius: 10px;
+  font-size: 13.5px;
+  font-weight: 600;
+  text-align: center;
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  font-family: inherit;
+  letter-spacing: -0.1px;
+}
+
+.preview-btn-primary {
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  color: white;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.25);
+}
+
+.preview-btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(99, 102, 241, 0.35);
+  background: linear-gradient(135deg, #5558e3 0%, #7c4ee8 100%);
+}
+
+.preview-btn-primary:active {
+  transform: translateY(0);
+}
+
+.preview-btn-secondary {
+  background: white;
+  color: #5a67d8;
+  border: 1.5px solid #e0e4f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  text-decoration: none !important;
+}
+
+.preview-btn-secondary:hover {
+  background: #f8f9fd;
+  border-color: #6366f1;
+  color: #4f46e5;
+  box-shadow: 0 2px 6px rgba(99, 102, 241, 0.15);
+  text-decoration: none !important;
+}
+
+.preview-btn-secondary:active {
+  background: #f0f2f8;
+  text-decoration: none !important;
+}
+
+.loading-preview {
+  padding: 40px 20px;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.preview-error {
+  padding: 40px 20px;
+  text-align: center;
+  color: #ef4444;
+  font-size: 13px;
+  font-weight: 500;
+}
+
 `
 
 // Inject styles once
@@ -742,8 +903,98 @@ function parseMarkdown(text) {
   return html
 }
 
+// Check if URL looks like a WebID profile
+function isProfileUrl(url) {
+  // Match common WebID patterns:
+  // - https://example.com/#me
+  // - https://example.com/profile/card#me
+  // - https://example.com/profile#me
+  // - https://example.com/people/alice#me
+  return url.match(/#(me|id|this|i)$/i) ||
+         url.includes('/profile/card#') ||
+         url.includes('/profile#') ||
+         url.match(/\/card#\w+$/)||
+         url.match(/\/people\/[^/]+#\w+$/)
+}
+
+// Render a contact card (simple prototype)
+async function renderContactCard(url, dom, store, $rdf) {
+  const card = dom.createElement('div')
+  card.className = 'contact-preview'
+  card.innerHTML = `<div class="loading-preview">Loading profile...</div>`
+
+  try {
+    const webId = $rdf.sym(url)
+    const doc = webId.doc()
+
+    // Add Accept header for proper RDF content negotiation
+    await store.fetcher.load(doc, {
+      headers: { Accept: 'text/turtle, application/ld+json, application/rdf+xml' }
+    })
+
+    const FOAF = $rdf.Namespace('http://xmlns.com/foaf/0.1/')
+    const VCARD = $rdf.Namespace('http://www.w3.org/2006/vcard/ns#')
+
+    // Try multiple name predicates
+    const name = store.any(webId, FOAF('name'))?.value ||
+                 store.any(webId, VCARD('fn'))?.value ||
+                 store.any(webId, VCARD('hasName'))?.value ||
+                 'Unknown'
+
+    // Get profile image - try multiple predicates
+    let img = store.any(webId, FOAF('depiction'))?.value ||
+              store.any(webId, FOAF('img'))?.value ||
+              store.any(webId, VCARD('hasPhoto'))?.value ||
+              store.any(webId, VCARD('photo'))?.value ||
+              ''
+
+    // Resolve relative URLs
+    if (img && !img.startsWith('http')) {
+      const base = new URL(url)
+      img = new URL(img, base.origin).href
+    }
+
+    // Get public info (avoid email for privacy)
+    const RDFS = $rdf.Namespace('http://www.w3.org/2000/01/rdf-schema#')
+    const SCHEMA = $rdf.Namespace('http://schema.org/')
+
+    const homepage = store.any(webId, FOAF('homepage'))?.value || ''
+    const bio = store.any(webId, VCARD('note'))?.value ||
+                store.any(webId, RDFS('comment'))?.value ||
+                store.any(webId, SCHEMA('description'))?.value ||
+                ''
+    const org = store.any(webId, VCARD('organization-name'))?.value || ''
+    const role = store.any(webId, VCARD('role'))?.value || ''
+
+    // Format homepage for display (remove protocol, shorten)
+    const homepageDisplay = homepage ? homepage.replace(/^https?:\/\//, '').replace(/\/$/, '') : ''
+
+    card.innerHTML = `
+      <div class="preview-header">
+        <span class="preview-icon">👤</span>
+        <span class="preview-type">PERSON</span>
+      </div>
+      <div class="preview-content">
+        ${img ? `<img src="${img}" class="preview-avatar" alt="${name}" />` : ''}
+        <div class="preview-name">${img ? '' : '🧑‍💼 '}${name}</div>
+        ${role ? `<div class="preview-detail">💼 ${role}</div>` : ''}
+        ${org ? `<div class="preview-detail">🏢 ${org}</div>` : ''}
+        ${bio ? `<div class="preview-bio">${bio}</div>` : ''}
+        ${homepage ? `<div class="preview-detail">🌐 ${homepageDisplay}</div>` : ''}
+      </div>
+      <div class="preview-actions">
+        <a href="${url}" target="_blank" class="preview-btn preview-btn-primary">View Profile</a>
+      </div>
+    `
+  } catch (err) {
+    card.innerHTML = `<div class="preview-error">Could not load profile</div>`
+  }
+
+  return card
+}
+
 // Render message content with links and media
-function renderMessageContent(dom, content) {
+function renderMessageContent(dom, content, store, $rdf) {
   const container = dom.createElement('div')
 
   const tokens = []
@@ -822,6 +1073,22 @@ function renderMessageContent(dom, content) {
           wrapper.appendChild(audio)
           container.appendChild(wrapper)
 
+        // Profile card
+        } else if (isProfileUrl(part)) {
+          const placeholder = dom.createElement('div')
+          placeholder.className = 'contact-preview loading-preview'
+          placeholder.textContent = 'Loading profile...'
+          container.appendChild(placeholder)
+
+          // Load async and replace
+          renderContactCard(part, dom, store, $rdf)
+            .then(card => {
+              placeholder.replaceWith(card)
+            })
+            .catch(err => {
+              placeholder.textContent = 'Error loading profile'
+            })
+
         // Regular link
         } else {
           const link = dom.createElement('a')
@@ -890,7 +1157,7 @@ async function fetchAvatar(webId, store, $rdf) {
 }
 
 // Create message element
-function createMessageElement(dom, message, isOwn, callbacks) {
+function createMessageElement(dom, message, isOwn, callbacks, store, $rdf) {
   const row = dom.createElement('div')
   row.className = `message-row ${isOwn ? 'sent' : 'received'}`
   row.dataset.uri = message.uri
@@ -920,7 +1187,7 @@ function createMessageElement(dom, message, isOwn, callbacks) {
 
   const text = dom.createElement('div')
   text.className = 'message-text'
-  const contentEl = renderMessageContent(dom, message.content || '')
+  const contentEl = renderMessageContent(dom, message.content || '', store, $rdf)
   text.appendChild(contentEl)
   bubble.appendChild(text)
 
@@ -1469,7 +1736,7 @@ export const longChatPane = {
       // Cancel handler
       cancelBtn.onclick = () => {
         textEl.innerHTML = ''
-        textEl.appendChild(renderMessageContent(dom, originalContent))
+        textEl.appendChild(renderMessageContent(dom, originalContent, store, $rdf))
       }
 
       // Save handler
@@ -1512,7 +1779,7 @@ export const longChatPane = {
           message.content = newContent
           message.edited = true
           textEl.innerHTML = ''
-          textEl.appendChild(renderMessageContent(dom, newContent))
+          textEl.appendChild(renderMessageContent(dom, newContent, store, $rdf))
 
           // Add edited indicator if not present
           const meta = rowEl.querySelector('.message-meta')
@@ -1739,7 +2006,7 @@ export const longChatPane = {
           } else {
             for (const msg of allMessages) {
               const isOwn = currentUser && msg.authorUri === currentUser
-              const el = createMessageElement(dom, msg, isOwn, messageCallbacks)
+              const el = createMessageElement(dom, msg, isOwn, messageCallbacks, store, $rdf)
               messagesContainer.appendChild(el)
               renderedUris.add(msg.uri)
             }
@@ -1753,7 +2020,7 @@ export const longChatPane = {
           // Append only new messages
           for (const msg of unrenderedMessages) {
             const isOwn = currentUser && msg.authorUri === currentUser
-            const el = createMessageElement(dom, msg, isOwn, messageCallbacks)
+            const el = createMessageElement(dom, msg, isOwn, messageCallbacks, store, $rdf)
             messagesContainer.appendChild(el)
             renderedUris.add(msg.uri)
           }
@@ -1877,7 +2144,7 @@ export const longChatPane = {
         const empty = messagesContainer.querySelector('.empty-chat')
         if (empty) empty.remove()
 
-        const el = createMessageElement(dom, msg, true, messageCallbacks)
+        const el = createMessageElement(dom, msg, true, messageCallbacks, store, $rdf)
         messagesContainer.appendChild(el)
         messagesContainer.scrollTop = messagesContainer.scrollHeight
 
