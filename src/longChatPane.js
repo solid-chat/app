@@ -131,6 +131,45 @@ const styles = `
   background: rgba(255,255,255,0.3);
 }
 
+.date-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: 8px;
+}
+
+.date-nav-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255,255,255,0.2);
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  transition: background 0.2s;
+}
+
+.date-nav-btn:hover:not(:disabled) {
+  background: rgba(255,255,255,0.3);
+}
+
+.date-nav-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.date-nav-label {
+  font-size: 13px;
+  font-weight: 500;
+  opacity: 0.9;
+  min-width: 90px;
+  text-align: center;
+}
+
 .messages-container {
   flex: 1;
   overflow-y: auto;
@@ -857,6 +896,31 @@ function getInitials(name) {
   return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
 }
 
+// Date navigation helpers for sharded chats
+const DATE_SHARD_PATTERN = /\/(\d{4})\/(\d{2})\/(\d{2})\/chat\.(json|jsonld|ttl)$/
+
+function parseDateFromUri(uri) {
+  const match = uri.match(DATE_SHARD_PATTERN)
+  if (!match) return null
+  return new Date(Date.UTC(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3])))
+}
+
+function formatDateLabel(date) {
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
+}
+
+function getAdjacentDateUri(uri, days) {
+  const match = uri.match(DATE_SHARD_PATTERN)
+  if (!match) return null
+  const date = new Date(Date.UTC(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3])))
+  date.setUTCDate(date.getUTCDate() + days)
+  const year = date.getUTCFullYear()
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(date.getUTCDate()).padStart(2, '0')
+  const ext = match[4]
+  return uri.replace(DATE_SHARD_PATTERN, `/${year}/${month}/${day}/chat.${ext}`)
+}
+
 // Avatar cache
 const avatarCache = new Map()
 
@@ -1120,6 +1184,54 @@ export const longChatPane = {
     titleDiv.appendChild(statusEl)
 
     header.appendChild(titleDiv)
+
+    // Date navigation (for sharded chats)
+    const currentDate = parseDateFromUri(subject.uri)
+    if (currentDate) {
+      const dateNav = dom.createElement('div')
+      dateNav.className = 'date-nav'
+
+      const prevBtn = dom.createElement('button')
+      prevBtn.className = 'date-nav-btn'
+      prevBtn.textContent = '←'
+      prevBtn.title = 'Previous day'
+      prevBtn.onclick = async () => {
+        const prevUri = getAdjacentDateUri(subject.uri, -1)
+        if (prevUri && window.solidChat?.openChat) {
+          window.solidChat.openChat(prevUri)
+        } else if (prevUri) {
+          window.location.href = `${window.location.pathname}?chat=${encodeURIComponent(prevUri)}`
+        }
+      }
+      dateNav.appendChild(prevBtn)
+
+      const dateLabel = dom.createElement('span')
+      dateLabel.className = 'date-nav-label'
+      dateLabel.textContent = formatDateLabel(currentDate)
+      dateNav.appendChild(dateLabel)
+
+      const nextBtn = dom.createElement('button')
+      nextBtn.className = 'date-nav-btn'
+      nextBtn.textContent = '→'
+      nextBtn.title = 'Next day'
+      // Disable if viewing today or future
+      const today = new Date()
+      today.setUTCHours(0, 0, 0, 0)
+      if (currentDate >= today) {
+        nextBtn.disabled = true
+      }
+      nextBtn.onclick = async () => {
+        const nextUri = getAdjacentDateUri(subject.uri, 1)
+        if (nextUri && window.solidChat?.openChat) {
+          window.solidChat.openChat(nextUri)
+        } else if (nextUri) {
+          window.location.href = `${window.location.pathname}?chat=${encodeURIComponent(nextUri)}`
+        }
+      }
+      dateNav.appendChild(nextBtn)
+
+      header.appendChild(dateNav)
+    }
 
     // Share button
     const shareBtn = dom.createElement('button')
