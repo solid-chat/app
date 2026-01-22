@@ -1647,24 +1647,59 @@ export const longChatPane = {
           // Manual fetch to handle JSON-LD detection
           const docUri = doc.uri || doc.value
           const authFetch = context.authFetch ? context.authFetch() : fetch
+          // Request JSON-LD first for .jsonld files, otherwise prefer Turtle
+          const acceptHeader = docUri.endsWith('.jsonld')
+            ? 'application/ld+json, application/json'
+            : 'text/turtle, application/ld+json, application/json, application/rdf+xml'
           const response = await authFetch(docUri, {
-            headers: { 'Accept': 'text/turtle, application/ld+json, application/json, application/rdf+xml' }
+            headers: { 'Accept': acceptHeader }
           })
           if (response.ok) {
             const text = await response.text()
             let contentType = response.headers.get('content-type') || 'text/turtle'
-            // Detect JSON-LD by content if server returns application/json
-            if (contentType.includes('application/json') && text.trim().startsWith('{') && text.includes('@context')) {
+            // Detect JSON-LD by file extension or content
+            if (docUri.endsWith('.jsonld') || (text.trim().startsWith('{') && text.includes('@context'))) {
               contentType = 'application/ld+json'
             }
-            // JSON-LD parsing is async in rdflib, use callback
+            // JSON-LD parsing - use manual parsing for our simple format
             if (contentType.includes('ld+json')) {
-              await new Promise((resolve, reject) => {
-                $rdf.parse(text, store, docUri, contentType, (err) => {
-                  if (err) reject(err)
-                  else resolve()
-                })
-              })
+              const data = JSON.parse(text)
+              const base = data['@context']?.['@base'] || docUri
+              const messages = data['meeting:message'] || []
+              const doc = $rdf.sym(docUri)
+              const MEETING = $rdf.Namespace('http://www.w3.org/ns/pim/meeting#')
+              const SIOC = $rdf.Namespace('http://rdfs.org/sioc/ns#')
+              const DCT = $rdf.Namespace('http://purl.org/dc/terms/')
+              const FOAF = $rdf.Namespace('http://xmlns.com/foaf/0.1/')
+
+              for (const msg of messages) {
+                const msgUri = msg['@id'].startsWith('#') ? base + msg['@id'] : msg['@id']
+                const msgNode = $rdf.sym(msgUri)
+
+                // Add message link
+                store.add($rdf.sym(base), MEETING('message'), msgNode, doc)
+
+                // Add content
+                if (msg['sioc:content']) {
+                  store.add(msgNode, SIOC('content'), msg['sioc:content'], doc)
+                }
+
+                // Add date
+                if (msg['dct:created']) {
+                  const dateVal = msg['dct:created']['@value'] || msg['dct:created']
+                  store.add(msgNode, DCT('created'), $rdf.lit(dateVal, null, $rdf.sym('http://www.w3.org/2001/XMLSchema#dateTime')), doc)
+                }
+
+                // Add maker
+                if (msg['foaf:maker']) {
+                  const maker = msg['foaf:maker']
+                  const makerNode = $rdf.sym(maker['@id'])
+                  store.add(msgNode, FOAF('maker'), makerNode, doc)
+                  if (maker['foaf:name']) {
+                    store.add(makerNode, FOAF('name'), maker['foaf:name'], doc)
+                  }
+                }
+              }
             } else {
               $rdf.parse(text, store, docUri, contentType)
             }
