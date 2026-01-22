@@ -24,6 +24,12 @@ const FLOW = {
   Message: 'http://www.w3.org/2005/01/wf/flow#Message'
 }
 
+const MEETING = {
+  namespace: 'http://www.w3.org/ns/pim/meeting#',
+  message: 'http://www.w3.org/ns/pim/meeting#message',
+  LongChat: 'http://www.w3.org/ns/pim/meeting#LongChat'
+}
+
 // Matches @{webId} or @https://... (without braces)
 const MENTION_RE = /@\{([^}]+)\}|@(https?:\/\/[^\s]+)/g
 const MENTION_TRIGGER = /@([^\s@{]*)$/
@@ -1638,7 +1644,21 @@ export const longChatPane = {
         // Fetch the document (skip if refresh already loaded fresh data)
         const doc = subject.doc ? subject.doc() : subject
         if (!skipFetch) {
-          await store.fetcher.load(doc)
+          // Manual fetch to handle JSON-LD detection
+          const docUri = doc.uri || doc.value
+          const authFetch = context.authFetch ? context.authFetch() : fetch
+          const response = await authFetch(docUri, {
+            headers: { 'Accept': 'text/turtle, application/ld+json, application/json, application/rdf+xml' }
+          })
+          if (response.ok) {
+            const text = await response.text()
+            let contentType = response.headers.get('content-type') || 'text/turtle'
+            // Detect JSON-LD by content if server returns application/json
+            if (contentType.includes('application/json') && text.trim().startsWith('{') && text.includes('@context')) {
+              contentType = 'application/ld+json'
+            }
+            $rdf.parse(text, store, docUri, contentType)
+          }
         }
 
         // Get chat title from the subject or document
@@ -1991,7 +2011,11 @@ export const longChatPane = {
 
       if (response.ok) {
         const text = await response.text()
-        const contentType = response.headers.get('content-type') || 'text/turtle'
+        let contentType = response.headers.get('content-type') || 'text/turtle'
+        // Detect JSON-LD by content if server returns application/json
+        if (contentType.includes('application/json') && text.trim().startsWith('{') && text.includes('@context')) {
+          contentType = 'application/ld+json'
+        }
         $rdf.parse(text, store, docUri, contentType)
       }
 
