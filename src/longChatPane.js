@@ -1659,7 +1659,7 @@ export const longChatPane = {
             const text = await response.text()
             let contentType = response.headers.get('content-type') || 'text/turtle'
             // Detect JSON-LD by file extension or content
-            if (docUri.endsWith('.jsonld') || (text.trim().startsWith('{') && text.includes('@context'))) {
+            if (isJsonFile || (text.trim().startsWith('{') && text.includes('@context'))) {
               contentType = 'application/ld+json'
             }
             // JSON-LD parsing - use manual parsing for our simple format
