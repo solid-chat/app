@@ -921,6 +921,39 @@ function getAdjacentDateUri(uri, days) {
   return uri.replace(DATE_SHARD_PATTERN, `/${year}/${month}/${day}/chat.${ext}`)
 }
 
+// Find next available date by probing (skips gaps)
+async function findAvailableDateUri(uri, direction, maxProbes = 30) {
+  for (let i = 1; i <= maxProbes; i++) {
+    const candidateUri = getAdjacentDateUri(uri, direction * i)
+    if (!candidateUri) return null
+
+    // Don't go into the future
+    if (direction > 0) {
+      const candidateDate = parseDateFromUri(candidateUri)
+      const today = new Date()
+      today.setUTCHours(0, 0, 0, 0)
+      if (candidateDate > today) return null
+    }
+
+    try {
+      // Use GET with small range - HEAD may have CORS issues in some browsers
+      const response = await fetch(candidateUri, {
+        method: 'GET',
+        headers: { 'Range': 'bytes=0-0' }
+      })
+      if (response.ok || response.status === 206) return candidateUri
+      if (response.status === 404) continue  // Keep probing
+      // Other errors - stop probing
+      return null
+    } catch (e) {
+      // Network error - stop probing
+      console.warn('Probe failed:', candidateUri, e)
+      return null
+    }
+  }
+  return null
+}
+
 // Avatar cache
 const avatarCache = new Map()
 
@@ -1194,13 +1227,19 @@ export const longChatPane = {
       const prevBtn = dom.createElement('button')
       prevBtn.className = 'date-nav-btn'
       prevBtn.textContent = '←'
-      prevBtn.title = 'Previous day'
+      prevBtn.title = 'Previous day (skips empty days)'
       prevBtn.onclick = async () => {
-        const prevUri = getAdjacentDateUri(subject.uri, -1)
+        prevBtn.disabled = true
+        prevBtn.textContent = '...'
+        const prevUri = await findAvailableDateUri(subject.uri, -1)
         if (prevUri && window.solidChat?.openChat) {
           window.solidChat.openChat(prevUri)
         } else if (prevUri) {
           window.location.href = `${window.location.pathname}?chat=${encodeURIComponent(prevUri)}`
+        } else {
+          prevBtn.textContent = '←'
+          prevBtn.disabled = false
+          prevBtn.title = 'No earlier messages found'
         }
       }
       dateNav.appendChild(prevBtn)
@@ -1213,7 +1252,7 @@ export const longChatPane = {
       const nextBtn = dom.createElement('button')
       nextBtn.className = 'date-nav-btn'
       nextBtn.textContent = '→'
-      nextBtn.title = 'Next day'
+      nextBtn.title = 'Next day (skips empty days)'
       // Disable if viewing today or future
       const today = new Date()
       today.setUTCHours(0, 0, 0, 0)
@@ -1221,11 +1260,17 @@ export const longChatPane = {
         nextBtn.disabled = true
       }
       nextBtn.onclick = async () => {
-        const nextUri = getAdjacentDateUri(subject.uri, 1)
+        nextBtn.disabled = true
+        nextBtn.textContent = '...'
+        const nextUri = await findAvailableDateUri(subject.uri, 1)
         if (nextUri && window.solidChat?.openChat) {
           window.solidChat.openChat(nextUri)
         } else if (nextUri) {
           window.location.href = `${window.location.pathname}?chat=${encodeURIComponent(nextUri)}`
+        } else {
+          nextBtn.textContent = '→'
+          nextBtn.disabled = true
+          nextBtn.title = 'No later messages found'
         }
       }
       dateNav.appendChild(nextBtn)
