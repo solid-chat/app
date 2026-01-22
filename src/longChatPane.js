@@ -1647,8 +1647,9 @@ export const longChatPane = {
           // Manual fetch to handle JSON-LD detection
           const docUri = doc.uri || doc.value
           const authFetch = context.authFetch ? context.authFetch() : fetch
-          // Request JSON-LD first for .jsonld files, otherwise prefer Turtle
-          const acceptHeader = docUri.endsWith('.jsonld')
+          // Request JSON-LD first for .json/.jsonld files, otherwise prefer Turtle
+          const isJsonFile = docUri.endsWith('.jsonld') || docUri.endsWith('.json')
+          const acceptHeader = isJsonFile
             ? 'application/ld+json, application/json'
             : 'text/turtle, application/ld+json, application/json, application/rdf+xml'
           const response = await authFetch(docUri, {
