@@ -1657,7 +1657,17 @@ export const longChatPane = {
             if (contentType.includes('application/json') && text.trim().startsWith('{') && text.includes('@context')) {
               contentType = 'application/ld+json'
             }
-            $rdf.parse(text, store, docUri, contentType)
+            // JSON-LD parsing is async in rdflib, use callback
+            if (contentType.includes('ld+json')) {
+              await new Promise((resolve, reject) => {
+                $rdf.parse(text, store, docUri, contentType, (err) => {
+                  if (err) reject(err)
+                  else resolve()
+                })
+              })
+            } else {
+              $rdf.parse(text, store, docUri, contentType)
+            }
           }
         }
 
@@ -2016,7 +2026,17 @@ export const longChatPane = {
         if (contentType.includes('application/json') && text.trim().startsWith('{') && text.includes('@context')) {
           contentType = 'application/ld+json'
         }
-        $rdf.parse(text, store, docUri, contentType)
+        // JSON-LD parsing is async in rdflib, use callback
+        if (contentType.includes('ld+json')) {
+          await new Promise((resolve, reject) => {
+            $rdf.parse(text, store, docUri, contentType, (err) => {
+              if (err) reject(err)
+              else resolve()
+            })
+          })
+        } else {
+          $rdf.parse(text, store, docUri, contentType)
+        }
       }
 
       // skipFetch=true because we already loaded fresh data above
