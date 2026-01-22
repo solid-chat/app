@@ -1700,6 +1700,12 @@ export const longChatPane = {
                     store.add(makerNode, FOAF('name'), maker['foaf:name'], doc)
                   }
                 }
+
+                // Add attachment (for images)
+                if (msg['sioc:attachment']) {
+                  const attachUrl = msg['sioc:attachment']['@id'] || msg['sioc:attachment']
+                  store.add(msgNode, SIOC('attachment'), $rdf.sym(attachUrl), doc)
+                }
               }
             } else {
               $rdf.parse(text, store, docUri, contentType)
@@ -1745,9 +1751,18 @@ export const longChatPane = {
                         'Unknown'
           }
 
+          // Check for attachment (image)
+          const attachment = store.any(msgNode, SIOC('attachment'), null, doc)?.value
+
+          // If there's an attachment, append it to content so image display works
+          let finalContent = content
+          if (attachment) {
+            finalContent = content + '\n' + attachment
+          }
+
           newMessages.push({
             uri: msgNode.value,
-            content,
+            content: finalContent,
             date: date ? new Date(date) : new Date(),
             author: authorName,
             authorUri: maker?.value
