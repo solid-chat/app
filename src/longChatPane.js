@@ -860,39 +860,45 @@ function getInitials(name) {
 // Avatar cache
 const avatarCache = new Map()
 
-// Fetch avatar from WebID profile
+// Fetch avatar from WebID profile or inline data
 async function fetchAvatar(webId, store, $rdf) {
   if (!webId) return null
   if (avatarCache.has(webId)) return avatarCache.get(webId)
 
-  try {
-    const profile = $rdf.sym(webId)
-    const doc = profile.doc()
-    await store.fetcher.load(doc, { headers: { Accept: 'text/turtle, application/ld+json, application/rdf+xml' } })
+  const ns = $rdf.Namespace
+  const FOAF = ns('http://xmlns.com/foaf/0.1/')
+  const VCARD = ns('http://www.w3.org/2006/vcard/ns#')
+  const profile = $rdf.sym(webId)
 
-    const ns = $rdf.Namespace
-    const FOAF = ns('http://xmlns.com/foaf/0.1/')
-    const VCARD = ns('http://www.w3.org/2006/vcard/ns#')
+  // First check if avatar is already in the store (from inline JSON-LD data)
+  let avatar = store.any(profile, FOAF('img'))?.value ||
+               store.any(profile, FOAF('depiction'))?.value ||
+               store.any(profile, VCARD('hasPhoto'))?.value ||
+               store.any(profile, VCARD('photo'))?.value
 
-    let avatar = store.any(profile, FOAF('img'))?.value ||
-                 store.any(profile, FOAF('depiction'))?.value ||
-                 store.any(profile, VCARD('hasPhoto'))?.value ||
-                 store.any(profile, VCARD('photo'))?.value
+  // If not found and webId is fetchable (http/https), try loading profile
+  if (!avatar && webId.startsWith('http')) {
+    try {
+      const doc = profile.doc()
+      await store.fetcher.load(doc, { headers: { Accept: 'text/turtle, application/ld+json, application/rdf+xml' } })
 
-    // Resolve relative URLs against profile base
-    if (avatar && !avatar.startsWith('http')) {
-      const base = profile.doc().value
-      avatar = new URL(avatar, base).href
+      avatar = store.any(profile, FOAF('img'))?.value ||
+               store.any(profile, FOAF('depiction'))?.value ||
+               store.any(profile, VCARD('hasPhoto'))?.value ||
+               store.any(profile, VCARD('photo'))?.value
+
+      // Resolve relative URLs against profile base
+      if (avatar && !avatar.startsWith('http')) {
+        const base = profile.doc().value
+        avatar = new URL(avatar, base).href
+      }
+    } catch (e) {
+      console.warn('Failed to fetch avatar for', webId, e.message || e)
     }
-
-
-    avatarCache.set(webId, avatar)
-    return avatar
-  } catch (e) {
-    console.warn('Failed to fetch avatar for', webId, e.message || e)
-    avatarCache.set(webId, null)
-    return null
   }
+
+  avatarCache.set(webId, avatar || null)
+  return avatar || null
 }
 
 // Create message element
@@ -1698,6 +1704,11 @@ export const longChatPane = {
                   store.add(msgNode, FOAF('maker'), makerNode, doc)
                   if (maker['foaf:name']) {
                     store.add(makerNode, FOAF('name'), maker['foaf:name'], doc)
+                  }
+                  // Add avatar from inline foaf:img (for Matrix-bridged messages)
+                  if (maker['foaf:img']) {
+                    const imgUrl = maker['foaf:img']['@id'] || maker['foaf:img']
+                    store.add(makerNode, FOAF('img'), $rdf.sym(imgUrl), doc)
                   }
                 }
 
